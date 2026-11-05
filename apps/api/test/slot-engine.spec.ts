@@ -197,6 +197,25 @@ describe('SlotEngine.findSlots', () => {
     expect(slots).toHaveLength(0);
   });
 
+  it('does not apply the service buffer twice to an existing reservation', () => {
+    const slots = new SlotEngine().findSlots(
+      baseInput({
+        workingHours: [
+          { professionalId: caio.id, weekday: 1, startTime: '09:00', endTime: '12:00' },
+        ],
+        reservations: [
+          {
+            professionalId: caio.id,
+            startAt: new Date('2026-11-09T12:05:00Z'),
+            endAt: new Date('2026-11-09T12:55:00Z'),
+            status: 'BOOKED',
+          },
+        ],
+      }),
+    );
+    expect(slots[0].startAt.toISOString()).toBe('2026-11-09T13:00:00.000Z');
+  });
+
   it('respects minimum advance and maximum horizon', () => {
     const tooSoon = new SlotEngine().findSlots(
       baseInput({

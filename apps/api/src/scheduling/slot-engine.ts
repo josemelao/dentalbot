@@ -188,8 +188,8 @@ export class SlotEngine {
 
   private block(startAt: Date, endAt: Date, ctx: DayContext): Interval {
     return Interval.fromDateTimes(
-      DateTime.fromJSDate(startAt, { zone: ctx.zone }).minus({ minutes: ctx.bufferBefore }),
-      DateTime.fromJSDate(endAt, { zone: ctx.zone }).plus({ minutes: ctx.bufferAfter }),
+      DateTime.fromJSDate(startAt, { zone: ctx.zone }),
+      DateTime.fromJSDate(endAt, { zone: ctx.zone }),
     );
   }
 

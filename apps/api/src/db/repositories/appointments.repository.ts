@@ -169,4 +169,17 @@ export class AppointmentsRepository {
       [tenantId, appointmentId],
     );
   }
+
+  async confirmReservations(tenantId: string, appointmentId: string): Promise<void> {
+    await this.pool.query(
+      `update professional_reservations set status = 'BOOKED'
+       where tenant_id = $1 and appointment_id = $2 and status = 'RESCHEDULE_PENDING'`,
+      [tenantId, appointmentId],
+    );
+    await this.pool.query(
+      `update resource_reservations set status = 'BOOKED'
+       where tenant_id = $1 and appointment_id = $2 and status = 'RESCHEDULE_PENDING'`,
+      [tenantId, appointmentId],
+    );
+  }
 }

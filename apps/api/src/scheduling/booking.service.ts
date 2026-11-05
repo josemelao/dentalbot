@@ -21,6 +21,14 @@ export interface BookInput {
   idempotencyKey: string;
 }
 
+export interface RescheduleInput {
+  tenantId: string;
+  appointmentId: string;
+  newStartAt: Date;
+  professionalIds: string[];
+  idempotencyKey: string;
+}
+
 export type BookingOutcome =
   | { status: 'BOOKED'; appointment: Appointment }
   | { status: 'CONFLICT'; alternatives: Slot[] }
@@ -226,6 +234,231 @@ export class BookingService {
         operationId: operation.id,
       };
     }
+  }
+
+  async reschedule(input: RescheduleInput): Promise<BookingOutcome> {
+    const old = await this.deps.appointments.findById(input.tenantId, input.appointmentId);
+    if (!old) {
+      throw new DomainError('APPOINTMENT_NOT_FOUND', 404, 'Appointment not found');
+    }
+    if (old.status !== 'BOOKED') {
+      throw new DomainError('APPOINTMENT_NOT_BOOKED', 409, 'Appointment is not booked');
+    }
+
+    const operationResult = await this.deps.operations.createOrGet({
+      tenantId: input.tenantId,
+      idempotencyKey: input.idempotencyKey,
+      operationType: 'RESCHEDULE',
+      requestPayload: {
+        appointmentId: old.id,
+        newStartAt: input.newStartAt.toISOString(),
+      },
+    });
+    const operation = operationResult.operation;
+
+    if (!operationResult.created && operation.status === 'COMPLETED') {
+      const newAppointmentId = (operation.resultPayload as { newAppointmentId?: string })
+        .newAppointmentId;
+      if (newAppointmentId) {
+        const appointment = await this.deps.appointments.findById(
+          input.tenantId,
+          newAppointmentId,
+        );
+        if (appointment) return { status: 'BOOKED', appointment };
+      }
+    }
+    if (!operationResult.created && operation.status === 'UNKNOWN') {
+      const newAppointmentId = (operation.resultPayload as { newAppointmentId?: string })
+        .newAppointmentId;
+      if (newAppointmentId) {
+        return {
+          status: 'UNKNOWN',
+          appointmentId: newAppointmentId,
+          operationId: operation.id,
+        };
+      }
+    }
+
+    const service = await this.deps.catalog.findService(input.tenantId, old.serviceId);
+    if (!service) {
+      throw new DomainError('SERVICE_NOT_FOUND', 404, 'Service not found');
+    }
+
+    const durationMinutes = service.durationMinutes;
+    const newEndAt = new Date(input.newStartAt.getTime() + durationMinutes * 60_000);
+    const blockingStartAt = new Date(
+      input.newStartAt.getTime() - service.bufferBeforeMinutes * 60_000,
+    );
+    const blockingEndAt = new Date(
+      newEndAt.getTime() + service.bufferAfterMinutes * 60_000,
+    );
+
+    const slots = await this.deps.availability.findSlots({
+      tenantId: input.tenantId,
+      serviceId: old.serviceId,
+      quantity: 1,
+      professionalId: input.professionalIds.length === 1 ? input.professionalIds[0] : null,
+      locationId: old.locationId,
+      from: new Date(input.newStartAt.getTime() - 12 * 60 * 60_000),
+      to: new Date(input.newStartAt.getTime() + 12 * 60 * 60_000),
+      now: this.deps.now(),
+    });
+
+    const match = slots.find(
+      (slot) =>
+        slot.startAt.getTime() === input.newStartAt.getTime() &&
+        sameProfessionalSet(slot.professionalIds, input.professionalIds),
+    );
+    if (!match) {
+      await this.deps.operations.mark(input.tenantId, operation.id, 'FAILED', {
+        reason: 'CONFLICT',
+      });
+      return { status: 'CONFLICT', alternatives: slots.slice(0, 3) };
+    }
+
+    const locks: AvailabilityLock[] = [];
+    try {
+      for (const professionalId of input.professionalIds) {
+        locks.push(
+          await this.deps.locks.create({
+            tenantId: input.tenantId,
+            professionalId,
+            startAt: blockingStartAt,
+            endAt: blockingEndAt,
+            expiresAt: new Date(this.deps.now().getTime() + 5 * 60_000),
+            operationId: operation.id,
+          }),
+        );
+      }
+    } catch (error) {
+      await this.releaseLocks(input.tenantId, locks);
+      await this.deps.operations.mark(input.tenantId, operation.id, 'FAILED', {
+        reason: 'LOCK_ERROR',
+      });
+      throw error;
+    }
+
+    let newAppointment: Appointment;
+    try {
+      newAppointment = await this.deps.appointments.createWithReservations({
+        tenantId: input.tenantId,
+        patientContactId: old.patientContactId,
+        serviceId: old.serviceId,
+        locationId: old.locationId,
+        resourceId: old.resourceId,
+        startAt: input.newStartAt,
+        endAt: newEndAt,
+        blockingStartAt,
+        blockingEndAt,
+        professionals: input.professionalIds.map((id, index) => ({
+          id,
+          role: index === 0 ? ('primary' as const) : ('required' as const),
+        })),
+        operationId: operation.id,
+        status: 'RESCHEDULE_PENDING',
+      });
+    } catch (error) {
+      await this.releaseLocks(input.tenantId, locks);
+      if (isConflict(error)) {
+        await this.deps.operations.mark(input.tenantId, operation.id, 'FAILED', {
+          reason: 'CONFLICT',
+        });
+        return { status: 'CONFLICT', alternatives: slots.slice(0, 3) };
+      }
+      await this.deps.operations.mark(input.tenantId, operation.id, 'FAILED', {
+        reason: 'DB_ERROR',
+      });
+      throw error;
+    }
+
+    let newEventId: string;
+    try {
+      const created = await this.deps.calendar.createEvent({
+        operationId: operation.id,
+        tenantId: input.tenantId,
+        summary: service.name,
+        startAt: input.newStartAt,
+        endAt: newEndAt,
+        professionalId: input.professionalIds[0],
+      });
+      const lookup = await this.deps.calendar.getEvent(created.externalEventId);
+      if (!lookup.exists) {
+        throw new Error('New calendar event was not found after creation');
+      }
+      newEventId = created.externalEventId;
+    } catch {
+      await this.deps.appointments.updateStatus(
+        input.tenantId,
+        newAppointment.id,
+        'CANCELLED',
+      );
+      await this.deps.appointments.releaseReservations(input.tenantId, newAppointment.id);
+      await this.deps.operations.mark(input.tenantId, operation.id, 'UNKNOWN', {
+        oldAppointmentId: old.id,
+        newAppointmentId: newAppointment.id,
+      });
+      await this.releaseLocks(input.tenantId, locks);
+      return {
+        status: 'UNKNOWN',
+        appointmentId: newAppointment.id,
+        operationId: operation.id,
+      };
+    }
+
+    try {
+      if (old.googleEventId) {
+        await this.deps.calendar.cancelEvent(old.googleEventId);
+        const oldLookup = await this.deps.calendar.getEvent(old.googleEventId);
+        if (oldLookup.exists) {
+          throw new Error('Old calendar event still exists');
+        }
+      }
+    } catch {
+      await this.deps.appointments.updateStatus(input.tenantId, newAppointment.id, 'BOOKED');
+      await this.deps.appointments.confirmReservations(input.tenantId, newAppointment.id);
+      await this.deps.appointments.setCalendarEvent(
+        input.tenantId,
+        newAppointment.id,
+        newEventId,
+      );
+      await this.deps.operations.mark(input.tenantId, operation.id, 'UNKNOWN', {
+        oldAppointmentId: old.id,
+        newAppointmentId: newAppointment.id,
+      });
+      await this.releaseLocks(input.tenantId, locks);
+      return {
+        status: 'UNKNOWN',
+        appointmentId: newAppointment.id,
+        operationId: operation.id,
+      };
+    }
+
+    await this.deps.appointments.updateStatus(input.tenantId, old.id, 'CANCELLED');
+    await this.deps.appointments.releaseReservations(input.tenantId, old.id);
+    await this.deps.appointments.updateStatus(input.tenantId, newAppointment.id, 'BOOKED');
+    await this.deps.appointments.confirmReservations(input.tenantId, newAppointment.id);
+    await this.deps.appointments.setCalendarEvent(
+      input.tenantId,
+      newAppointment.id,
+      newEventId,
+    );
+    await this.deps.operations.mark(
+      input.tenantId,
+      operation.id,
+      'COMPLETED',
+      { oldAppointmentId: old.id, newAppointmentId: newAppointment.id },
+      newEventId,
+    );
+    await this.releaseLocks(input.tenantId, locks);
+
+    return {
+      status: 'BOOKED',
+      appointment: {
+        ...newAppointment,
+        status: 'BOOKED',
+        googleEventId: newEventId,
+      },
+    };
   }
 
   private async releaseLocks(
