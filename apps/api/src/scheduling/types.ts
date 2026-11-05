@@ -44,6 +44,8 @@ export interface SlotWorkingHour {
   weekday: number;
   startTime: string;
   endTime: string;
+  validFrom?: string;
+  validTo?: string | null;
 }
 
 export interface SlotTimeOff {

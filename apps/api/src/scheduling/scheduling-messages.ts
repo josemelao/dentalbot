@@ -65,6 +65,9 @@ export const schedulingMessages = {
   noAppointment: (): string =>
     'Não encontrei um agendamento futuro para este contato. Vou pedir para a equipe te ajudar.',
 
+  multipleAppointments: (): string =>
+    'Encontrei mais de um agendamento futuro. Vou pedir para a equipe te ajudar a escolher qual remarcar ou cancelar.',
+
   noSlots: (serviceName: string): string =>
     `Não encontrei horários para ${serviceName} nos próximos dias. Vou pedir para a equipe te ajudar.`,
 

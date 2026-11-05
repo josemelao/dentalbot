@@ -216,6 +216,43 @@ describe('SlotEngine.findSlots', () => {
     expect(slots[0].startAt.toISOString()).toBe('2026-11-09T13:00:00.000Z');
   });
 
+  it('offers slots per qualified professional when none is requested', () => {
+    const slots = new SlotEngine().findSlots(
+      baseInput({
+        request: {
+          ...baseInput().request,
+          professionalId: null,
+          from: new Date('2026-11-09T00:00:00-03:00'),
+          to: new Date('2026-11-10T23:59:59-03:00'),
+        },
+        qualifiedProfessionals: [caio, chow],
+        workingHours: [
+          { professionalId: caio.id, weekday: 1, startTime: '09:00', endTime: '12:00' },
+          { professionalId: chow.id, weekday: 2, startTime: '09:00', endTime: '12:00' },
+        ],
+      }),
+    );
+    expect(slots.some((slot) => slot.professionalIds.includes(caio.id))).toBe(true);
+    expect(slots.some((slot) => slot.professionalIds.includes(chow.id))).toBe(true);
+  });
+
+  it('respects working-hour validity dates', () => {
+    const slots = new SlotEngine().findSlots(
+      baseInput({
+        workingHours: [
+          {
+            professionalId: caio.id,
+            weekday: 1,
+            startTime: '09:00',
+            endTime: '12:00',
+            validTo: '2026-11-01',
+          },
+        ],
+      }),
+    );
+    expect(slots).toHaveLength(0);
+  });
+
   it('respects minimum advance and maximum horizon', () => {
     const tooSoon = new SlotEngine().findSlots(
       baseInput({

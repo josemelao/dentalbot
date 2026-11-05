@@ -175,6 +175,50 @@ describe('inbound end-to-end', () => {
     await app.close();
   });
 
+  it('sends the emergency protocol even when a human owns the conversation', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool, { withConversation: true });
+    await pool.query(`update patient_contacts set external_user_id = '42' where id = $1`, [
+      ids.contactId,
+    ]);
+    await pool.query(
+      `insert into human_tickets
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
+       values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '15 minutes')`,
+      [ids.tenantId, ids.conversationId, ids.contactId],
+    );
+    const { app, fakeChannel } = await buildTestApp({ pool });
+
+    await post(app, ids.channelExternalId, updateText(12, 'Não consigo respirar'));
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('SAMU');
+    await app.close();
+  });
+
+  it('routes a clinical scheduling request to clinical escalation', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool);
+    const { app, fakeChannel } = await buildTestApp({ pool });
+
+    await post(
+      app,
+      ids.channelExternalId,
+      updateText(13, 'quero marcar porque estou com dor'),
+    );
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('confirmar essa informação');
+    const tickets = await pool.query(`select reason from human_tickets where tenant_id = $1`, [
+      ids.tenantId,
+    ]);
+    expect(tickets.rows).toEqual([{ reason: 'CLINICAL' }]);
+    const appointments = await pool.query(
+      `select count(*)::int as n from appointments where tenant_id = $1`,
+      [ids.tenantId],
+    );
+    expect(appointments.rows[0].n).toBe(0);
+    await app.close();
+  });
+
   it('replies once for a replayed update', async () => {
     const pool = getTestPool();
     const ids = await seedClinic(pool);

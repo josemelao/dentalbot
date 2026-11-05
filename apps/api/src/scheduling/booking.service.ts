@@ -253,9 +253,6 @@ export class BookingService {
     if (!old) {
       throw new DomainError('APPOINTMENT_NOT_FOUND', 404, 'Appointment not found');
     }
-    if (old.status !== 'BOOKED') {
-      throw new DomainError('APPOINTMENT_NOT_BOOKED', 409, 'Appointment is not booked');
-    }
 
     const operationResult = await this.deps.operations.createOrGet({
       tenantId: input.tenantId,
@@ -289,6 +286,10 @@ export class BookingService {
           operationId: operation.id,
         };
       }
+    }
+
+    if (old.status !== 'BOOKED') {
+      throw new DomainError('APPOINTMENT_NOT_BOOKED', 409, 'Appointment is not booked');
     }
 
     const service = await this.deps.catalog.findService(input.tenantId, old.serviceId);
@@ -399,12 +400,14 @@ export class BookingService {
       }
       newEventId = created.externalEventId;
     } catch {
+      // The event may have been created before the timeout. Keep the new
+      // reservation blocking (RESCHEDULE_PENDING) and let reconciliation
+      // confirm or release it; releasing here could allow a double booking.
       await this.deps.appointments.updateStatus(
         input.tenantId,
         newAppointment.id,
-        'CANCELLED',
+        'UNKNOWN',
       );
-      await this.deps.appointments.releaseReservations(input.tenantId, newAppointment.id);
       await this.deps.operations.mark(input.tenantId, operation.id, 'UNKNOWN', {
         oldAppointmentId: old.id,
         newAppointmentId: newAppointment.id,

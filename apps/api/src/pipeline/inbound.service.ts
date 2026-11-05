@@ -87,40 +87,70 @@ export class InboundService {
         conversation.id,
       );
 
+      let decision: Decision;
+
       if (openTicket) {
         await this.deps.conversations.updateState(
           normalized.tenantId,
           conversation.id,
           'HUMAN_ACTIVE',
         );
-        await this.deps.audit.append({
-          tenantId: normalized.tenantId,
-          actorType: 'system',
-          action: 'human_active_no_reply',
-          entityType: 'conversation',
-          entityId: conversation.id,
-          correlationId,
-        });
 
-        return {
-          success: true,
-          status: 'REQUIRES_HUMAN',
-          data: {
+        const text = normalized.content ?? '';
+        const triage =
+          normalized.messageType === 'text'
+            ? this.deps.safety.triage(text)
+            : { tier: 'ADMINISTRATIVE' as const, matchedRule: null, confidence: 0.5 };
+
+        if (triage.tier !== 'EMERGENCY') {
+          await this.deps.audit.append({
             tenantId: normalized.tenantId,
+            actorType: 'system',
+            action: 'human_active_no_reply',
+            entityType: 'conversation',
+            entityId: conversation.id,
             correlationId,
-            normalized,
-            contact,
-            conversation: { ...conversation, state: 'HUMAN_ACTIVE' as const },
-            inboundMessage,
-            recentMessages,
-            humanActive: true,
-          },
-          error: null,
-          correlationId,
+          });
+
+          return {
+            success: true,
+            status: 'REQUIRES_HUMAN',
+            data: {
+              tenantId: normalized.tenantId,
+              correlationId,
+              normalized,
+              contact,
+              conversation: { ...conversation, state: 'HUMAN_ACTIVE' as const },
+              inboundMessage,
+              recentMessages,
+              humanActive: true,
+            },
+            error: null,
+            correlationId,
+          };
+        }
+
+        // Emergencies override the human-active silence.
+        try {
+          await this.deps.escalation.create({
+            tenantId: normalized.tenantId,
+            conversationId: conversation.id,
+            patientContactId: conversation.patientContactId,
+            reason: 'EMERGENCY',
+            summary: 'Possível emergência odontológica durante conversa humana',
+            question: text,
+          });
+        } catch {
+          // The safety reply must go out even if the ticket cannot be persisted.
+        }
+        decision = {
+          kind: 'EMERGENCY_PROTOCOL',
+          rule: triage.matchedRule ?? 'deterministic_emergency',
         };
+      } else {
+        decision = await this.decide(normalized, conversation, inboundMessage, recentMessages);
       }
 
-      const decision = await this.decide(normalized, conversation, inboundMessage, recentMessages);
       const outboundText = this.deps.composer.compose(decision, {
         slaMinutes: this.deps.slaMinutes,
       });
@@ -221,7 +251,7 @@ export class InboundService {
           conversation,
           inboundMessage,
           recentMessages,
-          humanActive: false,
+          humanActive: openTicket !== null,
         },
         error: null,
         correlationId,
@@ -294,22 +324,6 @@ export class InboundService {
     });
     const tier = this.deps.safety.escalate(triage, classified.intent).tier;
 
-    if (
-      classified.intent === 'SCHEDULE_REQUEST' ||
-      classified.intent === 'RESCHEDULE_REQUEST' ||
-      classified.intent === 'CANCEL_REQUEST'
-    ) {
-      const result = await this.deps.schedulingFlow.start({
-        tenantId: normalized.tenantId,
-        conversationId: conversation.id,
-        patientContactId: conversation.patientContactId,
-        text,
-        intent: classified.intent,
-        context: null,
-      });
-      return { kind: 'FLOW_REPLY', result };
-    }
-
     if (tier === 'EMERGENCY') {
       try {
         await this.deps.escalation.create({
@@ -348,6 +362,22 @@ export class InboundService {
         question: text,
       });
       return { kind: 'HOLDING_ESCALATED', ticket };
+    }
+
+    if (
+      classified.intent === 'SCHEDULE_REQUEST' ||
+      classified.intent === 'RESCHEDULE_REQUEST' ||
+      classified.intent === 'CANCEL_REQUEST'
+    ) {
+      const result = await this.deps.schedulingFlow.start({
+        tenantId: normalized.tenantId,
+        conversationId: conversation.id,
+        patientContactId: conversation.patientContactId,
+        text,
+        intent: classified.intent,
+        context: null,
+      });
+      return { kind: 'FLOW_REPLY', result };
     }
 
     if (classified.intent === 'FAQ_ADMIN') {

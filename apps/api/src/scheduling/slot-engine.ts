@@ -17,34 +17,36 @@ export class SlotEngine {
     const zone = input.timezone;
     const now = DateTime.fromJSDate(input.request.now, { zone });
     const duration = input.variant?.durationMinutes ?? input.service.durationMinutes;
-    const professionalIds = this.resolveProfessionals(input);
+    const professionalGroups = this.resolveProfessionalGroups(input);
 
-    if (professionalIds.length === 0) return [];
+    if (professionalGroups.length === 0) return [];
 
     const resourceId =
       input.resources.find((resource) => resource.status === 'active')?.id ?? null;
     const from = DateTime.fromJSDate(input.request.from, { zone }).startOf('day');
     const to = DateTime.fromJSDate(input.request.to, { zone }).endOf('day');
-    const ctx: DayContext = {
+    const baseContext = {
       zone,
       now,
       horizonEnd: now.plus({ days: input.maxHorizonDays }),
       duration,
       bufferBefore: input.service.bufferBeforeMinutes,
       bufferAfter: input.service.bufferAfterMinutes,
-      professionalIds,
       resourceId,
     };
 
     const slots: Slot[] = [];
-    for (let day = from; day <= to; day = day.plus({ days: 1 })) {
-      slots.push(...this.slotsForDay(input, day, ctx));
+    for (const professionalIds of professionalGroups) {
+      const ctx: DayContext = { ...baseContext, professionalIds };
+      for (let day = from; day <= to; day = day.plus({ days: 1 })) {
+        slots.push(...this.slotsForDay(input, day, ctx));
+      }
     }
 
     return this.dedupe(slots);
   }
 
-  private resolveProfessionals(input: SlotEngineInput): string[] {
+  private resolveProfessionalGroups(input: SlotEngineInput): string[][] {
     const qualified = new Set(
       input.qualifiedProfessionals
         .filter((professional) => professional.status === 'active')
@@ -55,18 +57,17 @@ export class SlotEngine {
       .map((requirement) => requirement.professionalId);
     const requested = input.request.professionalId;
 
-    let ids: string[];
     if (required.length > 0) {
-      ids = required;
-      if (requested && !ids.includes(requested)) return [];
-    } else if (requested) {
-      ids = [requested];
-    } else {
-      ids = [...qualified];
+      if (!required.every((id) => qualified.has(id))) return [];
+      if (requested && !required.includes(requested)) return [];
+      return [required];
     }
 
-    if (!ids.every((id) => qualified.has(id))) return [];
-    return ids;
+    if (requested) {
+      return qualified.has(requested) ? [[requested]] : [];
+    }
+
+    return [...qualified].map((id) => [id]);
   }
 
   private slotsForDay(input: SlotEngineInput, day: DateTime, ctx: DayContext): Slot[] {
@@ -163,8 +164,15 @@ export class SlotEngine {
     ctx: DayContext,
   ): Interval[] {
     const weekday = day.weekday % 7;
+    const isoDate = day.toISODate() ?? '';
     let intervals = input.workingHours
-      .filter((hour) => hour.professionalId === professionalId && hour.weekday === weekday)
+      .filter(
+        (hour) =>
+          hour.professionalId === professionalId &&
+          hour.weekday === weekday &&
+          (!hour.validFrom || hour.validFrom <= isoDate) &&
+          (!hour.validTo || hour.validTo >= isoDate),
+      )
       .map((hour) => {
         const [startHour, startMinute] = hour.startTime.split(':').map(Number);
         const [endHour, endMinute] = hour.endTime.split(':').map(Number);

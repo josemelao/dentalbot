@@ -10,6 +10,11 @@ import { ReconciliationService } from '../scheduling/reconciliation.service';
 async function main(): Promise<void> {
   loadDotenv();
   const env = loadEnv();
+  if (env.nodeEnv === 'production') {
+    throw new Error(
+      'Reconcile CLI requires the configured Google Calendar adapter; use the production reconciliation job',
+    );
+  }
   const pool = createPool(env.databaseUrl);
 
   try {

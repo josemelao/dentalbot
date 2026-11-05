@@ -92,4 +92,35 @@ describe('BookingService.reschedule', () => {
     ]);
     expect(oldRow.rows[0].status).toBe('BOOKED');
   });
+
+  it('returns the completed reschedule for a repeated idempotency key', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const service = buildBookingService(pool);
+
+    const old = await service.book(bookingInput(clinic, s, { idempotencyKey: 'old' }));
+    if (old.status !== 'BOOKED') throw new Error('setup failed');
+
+    const first = await service.reschedule({
+      tenantId: clinic.tenantId,
+      appointmentId: old.appointment.id,
+      newStartAt: new Date('2026-11-09T13:15:00Z'),
+      professionalIds: [s.caioId],
+      idempotencyKey: 'resched-1',
+    });
+    expect(first.status).toBe('BOOKED');
+    if (first.status !== 'BOOKED') return;
+
+    const second = await service.reschedule({
+      tenantId: clinic.tenantId,
+      appointmentId: old.appointment.id,
+      newStartAt: new Date('2026-11-09T13:15:00Z'),
+      professionalIds: [s.caioId],
+      idempotencyKey: 'resched-1',
+    });
+    expect(second.status).toBe('BOOKED');
+    if (second.status !== 'BOOKED') return;
+    expect(second.appointment.id).toBe(first.appointment.id);
+  });
 });

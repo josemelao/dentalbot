@@ -92,6 +92,17 @@ export class SchedulingFlowService {
           },
         };
       }
+      if (open.length > 1) {
+        return {
+          reply: schedulingMessages.multipleAppointments(),
+          context: null,
+          status: 'REQUIRES_HUMAN',
+          escalate: {
+            reason: 'UNKNOWN',
+            summary: 'Múltiplos agendamentos futuros; seleção manual necessária',
+          },
+        };
+      }
       const context =
         input.context ??
         this.newContext(input.intent === 'RESCHEDULE_REQUEST' ? 'RESCHEDULE' : 'CANCEL');

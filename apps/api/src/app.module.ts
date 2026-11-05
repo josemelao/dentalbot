@@ -61,6 +61,14 @@ export class AppModule {
         ? new OpenAiIntentGateway(options.env.openaiApiKey)
         : new FakeAiGateway(DEFAULT_AI_RULES));
     const notifier = options.notifier ?? new NoopOwnerNotifier();
+    const calendarAdapter =
+      options.calendarAdapter ??
+      (options.env.nodeEnv === 'production' ? null : new FakeCalendarAdapter());
+    if (!calendarAdapter) {
+      throw new Error(
+        'Calendar adapter is not configured for production; refusing to use the fake adapter',
+      );
+    }
 
     return {
       module: AppModule,
@@ -128,7 +136,7 @@ export class AppModule {
         },
         {
           provide: CALENDAR_ADAPTER,
-          useValue: options.calendarAdapter ?? new FakeCalendarAdapter(),
+          useValue: calendarAdapter,
         },
         {
           provide: CatalogRepository,

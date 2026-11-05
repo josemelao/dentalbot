@@ -286,4 +286,33 @@ describe('SchedulingFlowService', () => {
     ]);
     expect(cancelled.rows[0].status).toBe('CANCELLED');
   });
+
+  it('does not silently pick one of multiple appointments', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const { flow, booking } = build(pool);
+
+    const first = await booking.book(bookingInput(clinic, s, { idempotencyKey: 'one' }));
+    const second = await booking.book(
+      bookingInput(clinic, s, {
+        idempotencyKey: 'two',
+        startAt: new Date('2026-11-09T13:15:00Z'),
+      }),
+    );
+    if (first.status !== 'BOOKED' || second.status !== 'BOOKED') {
+      throw new Error('setup failed');
+    }
+
+    const result = await flow.start({
+      tenantId: clinic.tenantId,
+      conversationId: clinic.conversationId!,
+      patientContactId: clinic.contactId!,
+      text: 'quero cancelar',
+      intent: 'CANCEL_REQUEST',
+      context: null,
+    });
+    expect(result.status).toBe('REQUIRES_HUMAN');
+    expect(result.context).toBeNull();
+  });
 });

@@ -44,6 +44,7 @@ export class AvailabilityService {
     const workingHours = await this.catalog.listWorkingHours(
       request.tenantId,
       professionalIds,
+      request.locationId,
       request.from,
       request.to,
     );

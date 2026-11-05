@@ -86,4 +86,55 @@ describe('ReconciliationService reschedule and cancel', () => {
     ]);
     expect(newRow.rows[0].status).toBe('CANCELLED');
   });
+
+  it('keeps the new reservation blocking while a reschedule event is UNKNOWN', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const calendar = new FakeCalendarAdapter();
+    const service = buildBookingService(pool, calendar);
+
+    const old = await service.book(bookingInput(clinic, s, { idempotencyKey: 'old' }));
+    if (old.status !== 'BOOKED') throw new Error('setup failed');
+
+    calendar.createThenThrow = new Error('ETIMEDOUT');
+    const result = await service.reschedule({
+      tenantId: clinic.tenantId,
+      appointmentId: old.appointment.id,
+      newStartAt: new Date('2026-11-09T13:15:00Z'),
+      professionalIds: [s.caioId],
+      idempotencyKey: 'resched-timeout',
+    });
+    expect(result.status).toBe('UNKNOWN');
+    if (result.status !== 'UNKNOWN') return;
+
+    const blocking = await pool.query(
+      `select status from professional_reservations where appointment_id = $1`,
+      [result.appointmentId],
+    );
+    expect(blocking.rows).toEqual([{ status: 'RESCHEDULE_PENDING' }]);
+
+    const competing = await service.book(
+      bookingInput(clinic, s, {
+        idempotencyKey: 'compete',
+        startAt: new Date('2026-11-09T13:15:00Z'),
+      }),
+    );
+    expect(competing.status).toBe('CONFLICT');
+
+    const summary = await buildReconciliation(pool, calendar).reconcileUnknown(
+      clinic.tenantId,
+    );
+    expect(summary.confirmed).toBe(1);
+
+    const bookedRow = await pool.query(`select status from appointments where id = $1`, [
+      result.appointmentId,
+    ]);
+    expect(bookedRow.rows[0].status).toBe('BOOKED');
+    const confirmedReservation = await pool.query(
+      `select status from professional_reservations where appointment_id = $1`,
+      [result.appointmentId],
+    );
+    expect(confirmedReservation.rows).toEqual([{ status: 'BOOKED' }]);
+  });
 });

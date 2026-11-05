@@ -111,6 +111,7 @@ export class CatalogRepository {
   async listWorkingHours(
     tenantId: string,
     professionalIds: string[],
+    locationId: string,
     from: Date,
     to: Date,
   ): Promise<ProfessionalWorkingHour[]> {
@@ -118,11 +119,18 @@ export class CatalogRepository {
     const { rows } = await this.db.query(
       `select id, tenant_id as "tenantId", professional_id as "professionalId",
               location_id as "locationId", weekday, start_time as "startTime",
-              end_time as "endTime", valid_from as "validFrom", valid_to as "validTo"
+              end_time as "endTime", valid_from::text as "validFrom", valid_to::text as "validTo"
        from professional_working_hours
        where tenant_id = $1 and professional_id = any($2::uuid[])
+         and location_id = $5
          and valid_from <= $4::date and (valid_to is null or valid_to >= $3::date)`,
-      [tenantId, professionalIds, from.toISOString().slice(0, 10), to.toISOString().slice(0, 10)],
+      [
+        tenantId,
+        professionalIds,
+        from.toISOString().slice(0, 10),
+        to.toISOString().slice(0, 10),
+        locationId,
+      ],
     );
     return rows as ProfessionalWorkingHour[];
   }
@@ -153,7 +161,7 @@ export class CatalogRepository {
   ): Promise<ClinicHoliday[]> {
     const { rows } = await this.db.query(
       `select id, tenant_id as "tenantId", location_id as "locationId",
-              holiday_date as "date", name
+              holiday_date::text as "date", name
        from clinic_holidays
        where tenant_id = $1 and (location_id = $2 or location_id is null)
          and holiday_date >= $3::date and holiday_date <= $4::date`,
