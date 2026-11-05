@@ -96,4 +96,78 @@ describe('telegram webhook', () => {
     expect(events.rows).toEqual([{ status: 'skipped' }]);
     await app.close();
   });
+
+  it('rejects a malformed nested message', async () => {
+    const pool = getTestPool();
+    const { channelExternalId } = await seedClinic(pool);
+    const { app } = await buildTestApp({ pool });
+
+    const res = await post(app, channelExternalId, { update_id: 5001, message: {} });
+
+    expect(res.status).toBe(400);
+    await app.close();
+  });
+
+  it('reprocesses an event stuck in received', async () => {
+    const pool = getTestPool();
+    const { channelExternalId, tenantId } = await seedClinic(pool);
+    await pool.query(
+      `insert into webhook_events (tenant_id, channel, external_event_id, event_type, payload, status)
+       values ($1, 'telegram', '4001', 'telegram_update', '{}', 'received')`,
+      [tenantId],
+    );
+    const { app } = await buildTestApp({ pool });
+
+    const res = await post(app, channelExternalId, update(4001, 4001, 'Bom dia'));
+    expect(res.status).toBe(200);
+
+    const events = await pool.query(
+      `select status from webhook_events where tenant_id = $1 and external_event_id = '4001'`,
+      [tenantId],
+    );
+    expect(events.rows).toEqual([{ status: 'processed' }]);
+
+    const messages = await pool.query(
+      `select count(*)::int as n from messages where tenant_id = $1 and direction = 'in'`,
+      [tenantId],
+    );
+    expect(messages.rows[0].n).toBe(1);
+    await app.close();
+  });
+
+  it('reprocesses a failed event without duplicating the inbound message', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool, { withConversation: true });
+    await pool.query(`update patient_contacts set external_user_id = '42' where id = $1`, [
+      ids.contactId,
+    ]);
+    await pool.query(
+      `insert into messages
+         (tenant_id, conversation_id, channel, direction, external_message_id, message_type, content)
+       values ($1, $2, 'telegram', 'in', '4002', 'text', 'Bom dia')`,
+      [ids.tenantId, ids.conversationId],
+    );
+    await pool.query(
+      `insert into webhook_events (tenant_id, channel, external_event_id, event_type, payload, status)
+       values ($1, 'telegram', '4002', 'telegram_update', '{}', 'failed')`,
+      [ids.tenantId],
+    );
+    const { app } = await buildTestApp({ pool });
+
+    const res = await post(app, ids.channelExternalId, update(4002, 4002, 'Bom dia'));
+    expect(res.status).toBe(200);
+
+    const events = await pool.query(
+      `select status from webhook_events where tenant_id = $1 and external_event_id = '4002'`,
+      [ids.tenantId],
+    );
+    expect(events.rows).toEqual([{ status: 'processed' }]);
+
+    const messages = await pool.query(
+      `select count(*)::int as n from messages where tenant_id = $1 and direction = 'in'`,
+      [ids.tenantId],
+    );
+    expect(messages.rows[0].n).toBe(1);
+    await app.close();
+  });
 });

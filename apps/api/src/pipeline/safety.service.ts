@@ -12,22 +12,36 @@ const RULES: SafetyRule[] = [
   {
     id: 'airway',
     tier: 'EMERGENCY',
-    patterns: [/nao consigo respirar/, /dificuldade (para )?respirar/, /nao consigo engolir/],
+    patterns: [
+      /nao consigo respirar/,
+      /dificuldade (para |de )?(respirar|engolir|deglutir)/,
+      /nao consigo engolir/,
+    ],
   },
   {
     id: 'severe_swelling',
     tier: 'EMERGENCY',
-    patterns: [/inchaco (no rosto|na face|no pescoco)/, /rosto inchou/, /inchou muito/],
+    patterns: [
+      /inchaco (no rosto|na face|no pescoco|de garganta)/,
+      /rosto (esta )?inchad/,
+      /rosto inchou/,
+      /inchou muito/,
+    ],
   },
   {
     id: 'heavy_bleeding',
     tier: 'EMERGENCY',
-    patterns: [/sangramento intenso/, /sangrando muito/, /nao para de sangrar/],
+    patterns: [
+      /sangramento intenso/,
+      /sangramento (que )?nao para/,
+      /sangrando muito/,
+      /nao para(m)? de sangrar/,
+    ],
   },
   {
     id: 'trauma',
     tier: 'EMERGENCY',
-    patterns: [/trauma/, /bati (o dente|a boca|a cabeca)/, /acidente/],
+    patterns: [/trauma/, /bati (o dente|a boca|a cabeca)/, /acidente/, /queda/],
   },
   {
     id: 'high_fever',
@@ -37,7 +51,10 @@ const RULES: SafetyRule[] = [
   {
     id: 'disabling_pain',
     tier: 'EMERGENCY',
-    patterns: [/dor insuportavel/, /dor incapacitante/, /nao consigo nem abrir a boca/],
+    patterns: [
+      /dor (muito forte|forte|insuportavel|incapacitante)/,
+      /nao consigo nem abrir a boca/,
+    ],
   },
   {
     id: 'clinical',

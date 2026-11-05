@@ -19,7 +19,26 @@ import { InboundService } from '../../pipeline/inbound.service';
 import { mapTelegramUpdate } from './telegram.mapper';
 import { verifyTelegramSecret } from './telegram-signature';
 
-const UpdateSchema = z.object({ update_id: z.number().int() }).passthrough();
+const TelegramMessageSchema = z
+  .object({
+    message_id: z.number().int(),
+    date: z.number().int(),
+    chat: z.object({ id: z.number().int() }).passthrough(),
+    from: z.object({ id: z.number().int() }).passthrough().optional(),
+    text: z.string().optional(),
+    voice: z.unknown().optional(),
+    audio: z.unknown().optional(),
+    photo: z.unknown().optional(),
+    document: z.unknown().optional(),
+  })
+  .passthrough();
+
+const UpdateSchema = z
+  .object({
+    update_id: z.number().int(),
+    message: TelegramMessageSchema.optional(),
+  })
+  .passthrough();
 
 interface RequestWithCorrelation {
   header(name: string): string | undefined;
@@ -68,7 +87,11 @@ export class TelegramWebhookController {
     });
 
     if (!event.inserted) {
-      return { ok: true, duplicate: true };
+      const status = await this.events.findStatus(channel.tenantId, event.id);
+      if (status === 'processed' || status === 'skipped') {
+        return { ok: true, duplicate: true };
+      }
+      // A received or failed event is a retry: fall through and process it.
     }
 
     const normalized = mapTelegramUpdate(update, {

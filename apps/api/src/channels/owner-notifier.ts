@@ -26,3 +26,13 @@ export class RecordingOwnerNotifier implements OwnerNotifier {
     return { deliveredTo: owners.map((owner) => owner.id) };
   }
 }
+
+/**
+ * Phase 1 stand-in: no real delivery transport exists yet. Returning an empty
+ * delivery list keeps the ticket `open` instead of falsely marking it notified.
+ */
+export class NoopOwnerNotifier implements OwnerNotifier {
+  async notifyTicket(): Promise<{ deliveredTo: string[] }> {
+    return { deliveredTo: [] };
+  }
+}

@@ -34,6 +34,9 @@ export class MessagesRepository {
          (tenant_id, conversation_id, channel, direction, external_message_id,
           message_type, content, media, delivery_status)
        values ($1, $2, $3, 'in', $4, $5, $6, $7, 'received')
+       on conflict (tenant_id, channel, external_message_id)
+         where external_message_id is not null
+       do nothing
        returning ${MESSAGE_COLUMNS}`,
       [
         input.tenantId,
@@ -45,7 +48,21 @@ export class MessagesRepository {
         input.media,
       ],
     );
-    return rows[0] as Message;
+
+    if (rows[0]) return rows[0] as Message;
+
+    const { rows: existing } = await this.db.query(
+      `select ${MESSAGE_COLUMNS}
+       from messages
+       where tenant_id = $1 and channel = $2 and external_message_id = $3
+       limit 1`,
+      [input.tenantId, input.channel, input.externalMessageId],
+    );
+
+    if (!existing[0]) {
+      throw new Error('Failed to persist or find the inbound message');
+    }
+    return existing[0] as Message;
   }
 
   async appendOutbound(input: AppendOutboundInput): Promise<Message> {

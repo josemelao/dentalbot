@@ -55,4 +55,16 @@ export class WebhookEventsRepository {
       [tenantId, id, status, errorCode ?? null],
     );
   }
+
+  async findStatus(
+    tenantId: string,
+    id: string,
+  ): Promise<'received' | 'processed' | 'failed' | 'skipped' | null> {
+    const { rows } = await this.db.query(
+      `select status from webhook_events where tenant_id = $1 and id = $2`,
+      [tenantId, id],
+    );
+    return (rows[0] as { status: 'received' | 'processed' | 'failed' | 'skipped' } | undefined)
+      ?.status ?? null;
+  }
 }

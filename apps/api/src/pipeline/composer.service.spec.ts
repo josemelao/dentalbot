@@ -22,4 +22,13 @@ describe('ResponseComposer', () => {
     );
     expect(text).toBe('Rua A, 100');
   });
+
+  it('does not claim the team was notified when delivery is best-effort', () => {
+    const text = composer.compose(
+      { kind: 'EMERGENCY_PROTOCOL', rule: 'airway' },
+      { slaMinutes: 15 },
+    );
+    expect(text).toContain('SAMU');
+    expect(text).not.toContain('Já avisei');
+  });
 });

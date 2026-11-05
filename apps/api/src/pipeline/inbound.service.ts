@@ -224,6 +224,23 @@ export class InboundService {
     }
 
     const triage = this.deps.safety.triage(text);
+
+    if (triage.tier === 'EMERGENCY') {
+      try {
+        await this.deps.escalation.create({
+          tenantId: normalized.tenantId,
+          conversationId: conversation.id,
+          patientContactId: conversation.patientContactId,
+          reason: 'EMERGENCY',
+          summary: 'Possível emergência odontológica',
+          question: text,
+        });
+      } catch {
+        // The safety reply must go out even if the ticket cannot be persisted.
+      }
+      return { kind: 'EMERGENCY_PROTOCOL', rule: triage.matchedRule ?? 'deterministic_emergency' };
+    }
+
     const classified = await this.deps.intent.classify({
       tenantId: normalized.tenantId,
       conversationId: conversation.id,

@@ -1,6 +1,7 @@
 import request from 'supertest';
 import { getTestPool, seedClinic, seedKnowledge } from './helpers/db';
 import { buildTestApp } from './helpers/app';
+import { IntentService } from '../src/pipeline/intent.service';
 
 const updateText = (updateId: number, text: string) => ({
   update_id: updateId,
@@ -232,6 +233,22 @@ describe('inbound end-to-end', () => {
 
     const res = await post(app, ids.channelExternalId, { update_id: 'not-a-number' });
     expect(res.status).toBe(400);
+    await app.close();
+  });
+
+  it('sends the emergency protocol even when intent classification fails', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool);
+    const { app, fakeChannel } = await buildTestApp({ pool });
+    const intent = app.get(IntentService);
+    intent.classify = async () => {
+      throw new Error('classifier down');
+    };
+
+    const res = await post(app, ids.channelExternalId, updateText(11, 'Não consigo respirar'));
+
+    expect(res.status).toBe(200);
+    expect(fakeChannel.sent.at(-1)?.text).toContain('SAMU');
     await app.close();
   });
 });

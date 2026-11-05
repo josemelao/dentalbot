@@ -35,7 +35,13 @@ export class EscalationService {
     if (existing) return existing;
 
     const slaDueAt = new Date(Date.now() + this.deps.slaMinutes * 60_000);
-    let ticket = await this.deps.tickets.create({ ...input, slaDueAt });
+    const { ticket: createdTicket, created } = await this.deps.tickets.create({
+      ...input,
+      slaDueAt,
+    });
+    if (!created) return createdTicket;
+
+    let ticket = createdTicket;
 
     await this.deps.tickets.addEvent({
       tenantId: input.tenantId,
@@ -63,7 +69,11 @@ export class EscalationService {
     const owners = await this.deps.channels.listOwners(input.tenantId);
 
     try {
-      await this.deps.notifier.notifyTicket(ticket, owners);
+      const { deliveredTo } = await this.deps.notifier.notifyTicket(ticket, owners);
+      if (deliveredTo.length === 0) {
+        return ticket;
+      }
+
       await this.deps.tickets.addEvent({
         tenantId: input.tenantId,
         ticketId: ticket.id,

@@ -4,10 +4,10 @@ import { AuditRepository } from '../src/db/repositories/audit.repository';
 import { ChannelsRepository } from '../src/db/repositories/channels.repository';
 import { ConversationsRepository } from '../src/db/repositories/conversations.repository';
 import { TicketsRepository } from '../src/db/repositories/tickets.repository';
-import { RecordingOwnerNotifier } from '../src/channels/owner-notifier';
+import { RecordingOwnerNotifier, NoopOwnerNotifier, OwnerNotifier } from '../src/channels/owner-notifier';
 import { EscalationService } from '../src/pipeline/escalation.service';
 
-const build = (pool: Pool, notifier = new RecordingOwnerNotifier()) => ({
+const build = (pool: Pool, notifier: OwnerNotifier = new RecordingOwnerNotifier()) => ({
   notifier,
   service: new EscalationService({
     tickets: new TicketsRepository(pool),
@@ -66,7 +66,8 @@ describe('EscalationService', () => {
   it('notifies every active owner and dentist', async () => {
     const pool = getTestPool();
     const ids = await seedClinic(pool, { withConversation: true });
-    const { service, notifier } = build(pool);
+    const notifier = new RecordingOwnerNotifier();
+    const { service } = build(pool, notifier);
     await service.create(input(ids));
 
     expect(notifier.deliveries.map((delivery) => delivery.ownerId).sort()).toEqual(
@@ -98,5 +99,34 @@ describe('EscalationService', () => {
     const first = await service.create(input(ids));
     const second = await service.create(input(ids));
     expect(second.id).toBe(first.id);
+  });
+
+  it('allows only one open ticket per conversation', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool, { withConversation: true });
+    const insert = () =>
+      pool.query(
+        `insert into human_tickets
+           (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
+         values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '15 minutes')`,
+        [ids.tenantId, ids.conversationId, ids.contactId],
+      );
+
+    await insert();
+    await expect(insert()).rejects.toThrow(/duplicate key/);
+  });
+
+  it('keeps the ticket open when no owner was actually reached', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool, { withConversation: true });
+    const { service } = build(pool, new NoopOwnerNotifier());
+
+    const ticket = await service.create(input(ids));
+    expect(ticket.status).toBe('open');
+
+    const events = await pool.query(`select event from ticket_events where ticket_id = $1`, [
+      ticket.id,
+    ]);
+    expect(events.rows.map((row: { event: string }) => row.event)).toEqual(['created']);
   });
 });

@@ -44,11 +44,14 @@ export class TicketsRepository {
     return (rows[0] as HumanTicket | undefined) ?? null;
   }
 
-  async create(input: CreateTicketInput): Promise<HumanTicket> {
+  async create(input: CreateTicketInput): Promise<{ ticket: HumanTicket; created: boolean }> {
     const { rows } = await this.db.query(
       `insert into human_tickets
          (tenant_id, conversation_id, patient_contact_id, reason, summary, question, options, sla_due_at)
        values ($1, $2, $3, $4, $5, $6, $7, $8)
+       on conflict (tenant_id, conversation_id)
+         where status in ('open', 'notified', 'answered')
+       do nothing
        returning ${TICKET_COLUMNS}`,
       [
         input.tenantId,
@@ -61,7 +64,16 @@ export class TicketsRepository {
         input.slaDueAt,
       ],
     );
-    return rows[0] as HumanTicket;
+
+    if (rows[0]) {
+      return { ticket: rows[0] as HumanTicket, created: true };
+    }
+
+    const existing = await this.findOpenByConversation(input.tenantId, input.conversationId);
+    if (!existing) {
+      throw new Error('Failed to create or find the open ticket');
+    }
+    return { ticket: existing, created: false };
   }
 
   async addEvent(input: AddTicketEventInput): Promise<void> {

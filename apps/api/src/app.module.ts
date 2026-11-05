@@ -7,7 +7,7 @@ import { OpenAiIntentGateway } from './ai/openai-intent.gateway';
 import { AI_GATEWAY } from './ai/tokens';
 import { ChannelAdapter } from './channels/channel-adapter';
 import { FakeChannelAdapter } from './channels/fake/fake-channel.adapter';
-import { OwnerNotifier, RecordingOwnerNotifier } from './channels/owner-notifier';
+import { OwnerNotifier, NoopOwnerNotifier } from './channels/owner-notifier';
 import { CHANNEL_ADAPTER, OWNER_NOTIFIER } from './channels/tokens';
 import { TelegramAdapter } from './channels/telegram/telegram.adapter';
 import { TelegramWebhookController } from './channels/telegram/telegram.webhook.controller';
@@ -48,7 +48,7 @@ export class AppModule {
       (options.env.aiProvider === 'openai' && options.env.openaiApiKey
         ? new OpenAiIntentGateway(options.env.openaiApiKey)
         : new FakeAiGateway(DEFAULT_AI_RULES));
-    const notifier = options.notifier ?? new RecordingOwnerNotifier();
+    const notifier = options.notifier ?? new NoopOwnerNotifier();
 
     return {
       module: AppModule,
