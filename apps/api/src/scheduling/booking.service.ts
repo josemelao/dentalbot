@@ -29,6 +29,18 @@ export interface RescheduleInput {
   idempotencyKey: string;
 }
 
+export interface CancelInput {
+  tenantId: string;
+  appointmentId: string;
+  idempotencyKey: string;
+  reason?: string;
+  now?: Date;
+}
+
+export type CancelOutcome =
+  | { status: 'CANCELLED'; appointment: Appointment }
+  | { status: 'UNKNOWN'; appointmentId: string; operationId: string };
+
 export type BookingOutcome =
   | { status: 'BOOKED'; appointment: Appointment }
   | { status: 'CONFLICT'; alternatives: Slot[] }
@@ -457,6 +469,99 @@ export class BookingService {
         ...newAppointment,
         status: 'BOOKED',
         googleEventId: newEventId,
+      },
+    };
+  }
+
+  async cancel(input: CancelInput): Promise<CancelOutcome> {
+    const appointment = await this.deps.appointments.findById(
+      input.tenantId,
+      input.appointmentId,
+    );
+    if (!appointment) {
+      throw new DomainError('APPOINTMENT_NOT_FOUND', 404, 'Appointment not found');
+    }
+    if (appointment.status === 'CANCELLED') {
+      return { status: 'CANCELLED', appointment };
+    }
+    if (appointment.status !== 'BOOKED' && appointment.status !== 'RESCHEDULE_PENDING') {
+      throw new DomainError(
+        'APPOINTMENT_NOT_CANCELLABLE',
+        409,
+        'Appointment cannot be cancelled',
+      );
+    }
+
+    const operationResult = await this.deps.operations.createOrGet({
+      tenantId: input.tenantId,
+      idempotencyKey: input.idempotencyKey,
+      operationType: 'CANCEL',
+      requestPayload: {
+        appointmentId: appointment.id,
+        reason: input.reason ?? null,
+      },
+    });
+    const operation = operationResult.operation;
+
+    if (!operationResult.created && operation.status === 'COMPLETED') {
+      const current = await this.deps.appointments.findById(
+        input.tenantId,
+        input.appointmentId,
+      );
+      if (current) return { status: 'CANCELLED', appointment: current };
+    }
+    if (!operationResult.created && operation.status === 'UNKNOWN') {
+      return {
+        status: 'UNKNOWN',
+        appointmentId: input.appointmentId,
+        operationId: operation.id,
+      };
+    }
+
+    const now = input.now ?? this.deps.now();
+    const late = now.getTime() >= appointment.startAt.getTime() - 24 * 60 * 60_000;
+
+    try {
+      if (appointment.googleEventId) {
+        await this.deps.calendar.cancelEvent(appointment.googleEventId);
+        const lookup = await this.deps.calendar.getEvent(appointment.googleEventId);
+        if (lookup.exists) {
+          throw new Error('Calendar event still exists after cancellation');
+        }
+      }
+    } catch {
+      await this.deps.appointments.updateStatus(
+        input.tenantId,
+        appointment.id,
+        'UNKNOWN',
+      );
+      await this.deps.operations.mark(input.tenantId, operation.id, 'UNKNOWN', {
+        appointmentId: appointment.id,
+      });
+      return {
+        status: 'UNKNOWN',
+        appointmentId: appointment.id,
+        operationId: operation.id,
+      };
+    }
+
+    await this.deps.appointments.updateStatus(input.tenantId, appointment.id, 'CANCELLED');
+    await this.deps.appointments.setAttendanceStatus(
+      input.tenantId,
+      appointment.id,
+      late ? 'LATE_CANCELLED' : appointment.attendanceStatus,
+    );
+    await this.deps.appointments.releaseReservations(input.tenantId, appointment.id);
+    await this.deps.operations.mark(input.tenantId, operation.id, 'COMPLETED', {
+      appointmentId: appointment.id,
+    });
+
+    return {
+      status: 'CANCELLED',
+      appointment: {
+        ...appointment,
+        status: 'CANCELLED',
+        attendanceStatus: late ? 'LATE_CANCELLED' : appointment.attendanceStatus,
       },
     };
   }
