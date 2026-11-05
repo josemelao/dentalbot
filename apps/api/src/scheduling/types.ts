@@ -102,3 +102,23 @@ export interface SlotEngineInput {
   minAdvanceMinutes: number;
   maxHorizonDays: number;
 }
+
+export interface OfferedSlot {
+  startAt: string;
+  professionalIds: string[];
+  resourceId: string | null;
+}
+
+export interface SchedulingContext {
+  flow: 'SCHEDULE' | 'RESCHEDULE' | 'CANCEL';
+  step: 'SERVICE' | 'SLOT' | 'CONFIRM' | 'IDENTITY';
+  serviceId?: string;
+  quantity?: number;
+  locationId?: string;
+  timezone?: string;
+  offeredSlots?: OfferedSlot[];
+  chosenSlot?: OfferedSlot;
+  appointmentId?: string;
+  idempotencyKey: string;
+  expiresAt: string;
+}

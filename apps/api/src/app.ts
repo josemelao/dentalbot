@@ -5,6 +5,7 @@ import { AiGateway } from './ai/ai-gateway';
 import { AppModule } from './app.module';
 import { ChannelAdapter } from './channels/channel-adapter';
 import { OwnerNotifier } from './channels/owner-notifier';
+import { CalendarAdapter } from './calendar/calendar-adapter';
 import { correlationMiddleware } from './common/correlation';
 import { AppEnv, loadEnv } from './config/env';
 
@@ -12,6 +13,7 @@ export interface CreateAppOptions {
   env?: AppEnv;
   pool?: Pool;
   channelAdapter?: ChannelAdapter;
+  calendarAdapter?: CalendarAdapter;
   aiGateway?: AiGateway;
   notifier?: OwnerNotifier;
 }
@@ -23,6 +25,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<INestAp
       env,
       pool: options.pool,
       channelAdapter: options.channelAdapter,
+      calendarAdapter: options.calendarAdapter,
       aiGateway: options.aiGateway,
       notifier: options.notifier,
     }),

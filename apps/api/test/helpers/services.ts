@@ -4,12 +4,21 @@ import { FakeAiGateway } from '../../src/ai/fake-ai.gateway';
 import { FakeChannelAdapter } from '../../src/channels/fake/fake-channel.adapter';
 import { RecordingOwnerNotifier } from '../../src/channels/owner-notifier';
 import { AuditRepository } from '../../src/db/repositories/audit.repository';
+import { AppointmentsRepository } from '../../src/db/repositories/appointments.repository';
 import { ChannelsRepository } from '../../src/db/repositories/channels.repository';
 import { ConversationsRepository } from '../../src/db/repositories/conversations.repository';
 import { KnowledgeRepository } from '../../src/db/repositories/knowledge.repository';
 import { MessagesRepository } from '../../src/db/repositories/messages.repository';
 import { PatientsRepository } from '../../src/db/repositories/patients.repository';
 import { TicketsRepository } from '../../src/db/repositories/tickets.repository';
+import { OperationsRepository } from '../../src/db/repositories/operations.repository';
+import { LocksRepository } from '../../src/db/repositories/locks.repository';
+import { CatalogRepository } from '../../src/db/repositories/catalog.repository';
+import { FakeCalendarAdapter } from '../../src/calendar/fake-calendar.adapter';
+import { AvailabilityService } from '../../src/scheduling/availability.service';
+import { SlotEngine } from '../../src/scheduling/slot-engine';
+import { BookingService } from '../../src/scheduling/booking.service';
+import { SchedulingFlowService } from '../../src/scheduling/scheduling-flow.service';
 import { ResponseComposer } from '../../src/pipeline/composer.service';
 import { EscalationService } from '../../src/pipeline/escalation.service';
 import { FaqService } from '../../src/pipeline/faq.service';
@@ -42,6 +51,34 @@ export function buildInboundService(pool: Pool): InboundService {
   const composer = new ResponseComposer();
   const channel = new FakeChannelAdapter();
 
+  const catalog = new CatalogRepository(pool);
+  const availability = new AvailabilityService(catalog, new SlotEngine(), {
+    granularityMinutes: 15,
+    minAdvanceMinutes: 0,
+    maxHorizonDays: 90,
+  });
+  const appointments = new AppointmentsRepository(pool);
+  const operations = new OperationsRepository(pool);
+  const locks = new LocksRepository(pool);
+  const booking = new BookingService({
+    catalog,
+    availability,
+    appointments,
+    operations,
+    locks,
+    calendar: new FakeCalendarAdapter(),
+    now: () => new Date(),
+  });
+  const schedulingFlow = new SchedulingFlowService({
+    catalog,
+    availability,
+    appointments,
+    patients,
+    booking,
+    now: () => new Date(),
+    horizonDays: 7,
+  });
+
   return new InboundService({
     identity,
     conversations,
@@ -53,6 +90,7 @@ export function buildInboundService(pool: Pool): InboundService {
     faq,
     escalation,
     composer,
+    schedulingFlow,
     channel,
     slaMinutes: 15,
   });

@@ -125,6 +125,15 @@ export class AppointmentsRepository {
     return rows as Appointment[];
   }
 
+  async listProfessionalIds(tenantId: string, appointmentId: string): Promise<string[]> {
+    const { rows } = await this.pool.query(
+      `select professional_id as "professionalId" from appointment_professionals
+       where tenant_id = $1 and appointment_id = $2`,
+      [tenantId, appointmentId],
+    );
+    return rows.map((row: { professionalId: string }) => row.professionalId);
+  }
+
   async updateStatus(tenantId: string, appointmentId: string, status: string): Promise<void> {
     await this.pool.query(
       `update appointments set status = $3, updated_at = now()

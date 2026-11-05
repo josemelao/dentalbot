@@ -57,6 +57,7 @@ export interface Conversation {
   channel: Channel;
   state: ConversationState;
   humanTicketId: string | null;
+  context: Record<string, unknown>;
 }
 
 export interface Message {

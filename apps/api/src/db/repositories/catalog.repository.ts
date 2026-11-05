@@ -240,4 +240,16 @@ export class CatalogRepository {
     );
     return rows as Resource[];
   }
+
+  async listActiveLocations(
+    tenantId: string,
+  ): Promise<Array<{ id: string; name: string; timezone: string }>> {
+    const { rows } = await this.db.query(
+      `select id, name, timezone from locations
+       where tenant_id = $1 and status = 'active'
+       order by name`,
+      [tenantId],
+    );
+    return rows as Array<{ id: string; name: string; timezone: string }>;
+  }
 }

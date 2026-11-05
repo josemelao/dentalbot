@@ -17,7 +17,7 @@ export class ConversationsRepository {
   ): Promise<Conversation | null> {
     const { rows } = await this.db.query(
       `select id, tenant_id as "tenantId", patient_contact_id as "patientContactId", channel,
-              state, human_ticket_id as "humanTicketId"
+              state, human_ticket_id as "humanTicketId", context
        from conversations
        where tenant_id = $1 and patient_contact_id = $2 and state <> 'CLOSED'
        order by created_at desc
@@ -32,7 +32,7 @@ export class ConversationsRepository {
       `insert into conversations (tenant_id, patient_contact_id, channel)
        values ($1, $2, $3)
        returning id, tenant_id as "tenantId", patient_contact_id as "patientContactId", channel,
-                 state, human_ticket_id as "humanTicketId"`,
+                 state, human_ticket_id as "humanTicketId", context`,
       [input.tenantId, input.patientContactId, input.channel],
     );
     return rows[0] as Conversation;
@@ -63,6 +63,18 @@ export class ConversationsRepository {
       `update conversations set last_outbound_at = $3, updated_at = now()
        where tenant_id = $1 and id = $2`,
       [tenantId, conversationId, at],
+    );
+  }
+
+  async updateContext(
+    tenantId: string,
+    conversationId: string,
+    context: object | null,
+  ): Promise<void> {
+    await this.db.query(
+      `update conversations set context = $3, updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, conversationId, context ?? {}],
     );
   }
 }
