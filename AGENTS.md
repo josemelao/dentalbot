@@ -51,3 +51,25 @@ Phase 0–1 covers foundation, inbound, identity/context and administrative FAQ.
 
 Scheduling, reminders, WhatsApp Cloud API, real owner delivery and the panel are
 Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
+
+## Pipeline order (Phase 2)
+
+1. Deduplicate the channel event in `webhook_events`.
+2. Resolve `tenant_id`, contact and conversation.
+3. If a human ticket is open, set `HUMAN_ACTIVE` and do not auto-reply.
+4. Run deterministic safety triage. `EMERGENCY` always wins.
+5. If the conversation has an active scheduling context, handle the reply in the
+   flow (service, slot, confirmation or identity) without calling the AI.
+6. Otherwise classify intent. `SCHEDULE_REQUEST`, `RESCHEDULE_REQUEST` and
+   `CANCEL_REQUEST` start the scheduling flow.
+7. FAQ, clinical, human and unknown intents follow the Phase 1 pipeline.
+
+## Scheduling invariants
+
+- The database exclusion constraint on `professional_reservations` and
+  `resource_reservations` is the final guard against double booking.
+- Reschedule creates and verifies the new reservation before cancelling the old.
+- A calendar timeout is `UNKNOWN`, reconciled by `operation_id`; never blindly
+  retried.
+- Joint procedures require every required professional and the chair.
+- Identity (full name + birth date) is required before reschedule/cancel.

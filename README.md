@@ -93,6 +93,32 @@ npm test
 The suite needs the PostgreSQL container. It creates and migrates
 `dental_assistant_test` automatically.
 
+## Phase 2 boundaries
+
+- Scheduling, rescheduling and cancellation are implemented against the internal
+  agenda, with PostgreSQL exclusion constraints and `UNKNOWN` reconciliation.
+- `npm run seed:scheduling` loads the fictional catalog and working hours into the
+  pilot clinic. The catalog is a hypothesis until the partners validate it.
+- `npm run reconcile` releases expired locks and reconciles `UNKNOWN` operations.
+- Google Calendar is an adapter; the default is the deterministic fake. Wiring a
+  real Google account requires OAuth/service-account configuration.
+- Reminders, WhatsApp Cloud API, real owner delivery and the panel remain Phase 3+.
+
+## Scheduling demo
+
+With the API running and the scheduling seed applied:
+
+1. Send `quero marcar limpeza`.
+2. The bot lists three slots; reply `1`.
+3. Reply `SIM` to confirm.
+4. Send `quero remarcar`, then answer the identity prompt with
+   `Maria Silva, 10/05/1990`, choose a slot and reply `SIM`.
+5. Send `quero cancelar`, answer the identity prompt, and reply `SIM` only when
+   you really want to cancel.
+
+The demo identity exists only if the contact is linked to a patient with that
+name and birth date. The automated E2E test seeds it.
+
 ## Phase 1 boundaries
 
 - Scheduling, rescheduling, cancellation, reminders, WhatsApp Cloud API and the
