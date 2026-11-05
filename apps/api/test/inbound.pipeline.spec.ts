@@ -22,7 +22,7 @@ describe('InboundService', () => {
     const service = buildInboundService(pool);
     const result = await service.handle(message({ tenantId, externalChannelId }), 'corr-1');
 
-    expect(result.status).toBe('PENDING');
+    expect(result.status).toBe('COMPLETED');
     expect(result.data!.contact.externalUserId).toBe('user-1');
     expect(result.data!.humanActive).toBe(false);
 

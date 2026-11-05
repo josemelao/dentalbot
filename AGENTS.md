@@ -33,5 +33,21 @@ interprets exams or impersonates the dentists.
 ## Scope
 
 Phase 0–1 covers foundation, inbound, identity/context and administrative FAQ.
-Scheduling, reminders, WhatsApp Cloud API, escalation delivery and the panel
-arrive in later phases. See `0 - MVP Blueprint - Dental Assistant.md`.
+
+## Pipeline order (Phase 1)
+
+1. Deduplicate the channel event in `webhook_events`.
+2. Resolve `tenant_id` and the channel in `clinic_channels`.
+3. Create/reuse the contact and open conversation; append the inbound message.
+4. If a human ticket is open, set `HUMAN_ACTIVE` and do not auto-reply.
+5. Run deterministic safety triage. `EMERGENCY` overrides everything and always
+   sends the safety protocol, even if ticket creation fails.
+6. Clinical or clinical-intent messages create a `CLINICAL` ticket and send the
+   holding message.
+7. Human requests create a `HUMAN_REQUEST` ticket.
+8. Administrative FAQ answers come verbatim from an approved, in-force
+   `knowledge_entries` row. No entry means `UNKNOWN` escalation, never invention.
+9. Greeting, unsupported media and unknown intents have explicit safe replies.
+
+Scheduling, reminders, WhatsApp Cloud API, real owner delivery and the panel are
+Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.

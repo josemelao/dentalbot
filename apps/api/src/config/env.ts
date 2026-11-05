@@ -13,6 +13,7 @@ const EnvSchema = z
     TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
     TELEGRAM_API_BASE_URL: z.string().url().default('https://api.telegram.org'),
     AI_PROVIDER: z.enum(['fake', 'openai']).default('fake'),
+    CHANNEL_TRANSPORT: z.enum(['telegram', 'fake']).default('telegram'),
     OPENAI_API_KEY: z.string().min(1).optional(),
     LOG_LEVEL: z.string().default('info'),
     SLA_MINUTES: z.coerce.number().int().positive().default(15),
@@ -43,6 +44,7 @@ export interface AppEnv {
   telegramWebhookSecret: string;
   telegramApiBaseUrl: string;
   aiProvider: 'fake' | 'openai';
+  channelTransport: 'telegram' | 'fake';
   openaiApiKey: string | null;
   logLevel: string;
   slaMinutes: number;
@@ -67,6 +69,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     telegramWebhookSecret: env.TELEGRAM_WEBHOOK_SECRET ?? '',
     telegramApiBaseUrl: env.TELEGRAM_API_BASE_URL,
     aiProvider: env.AI_PROVIDER,
+    channelTransport: env.CHANNEL_TRANSPORT,
     openaiApiKey: env.OPENAI_API_KEY ?? null,
     logLevel: env.LOG_LEVEL,
     slaMinutes: env.SLA_MINUTES,

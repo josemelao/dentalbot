@@ -23,4 +23,9 @@ describe('loadEnv', () => {
       /TELEGRAM_WEBHOOK_SECRET/,
     );
   });
+
+  it('defaults the channel transport to telegram and accepts fake', () => {
+    expect(loadEnv(base).channelTransport).toBe('telegram');
+    expect(loadEnv({ ...base, CHANNEL_TRANSPORT: 'fake' }).channelTransport).toBe('fake');
+  });
 });
