@@ -101,3 +101,37 @@ export async function seedClinic(
 
   return result;
 }
+
+export interface SeedKnowledgeEntry {
+  category: string;
+  question: string;
+  answer: string;
+  keywords: string[];
+  status?: 'draft' | 'approved' | 'retired';
+  validFrom?: Date;
+  validTo?: Date | null;
+}
+
+export async function seedKnowledge(
+  db: Pool,
+  tenantId: string,
+  entries: SeedKnowledgeEntry[],
+): Promise<void> {
+  for (const entry of entries) {
+    await db.query(
+      `insert into knowledge_entries
+         (tenant_id, category, question, answer, keywords, status, valid_from, valid_to)
+       values ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [
+        tenantId,
+        entry.category,
+        entry.question,
+        entry.answer,
+        entry.keywords,
+        entry.status ?? 'approved',
+        entry.validFrom ?? new Date(),
+        entry.validTo ?? null,
+      ],
+    );
+  }
+}
