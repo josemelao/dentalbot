@@ -13,6 +13,10 @@ export class FakeCalendarAdapter implements CalendarAdapter {
   failNextCancel: Error | null = null;
   cancelThenThrow: Error | null = null;
 
+  eventIdFor(operationId: string): string {
+    return `fake-${operationId}`;
+  }
+
   async createEvent(event: CalendarEvent): Promise<{ externalEventId: string }> {
     if (this.failNextCreate) {
       const error = this.failNextCreate;
@@ -20,7 +24,7 @@ export class FakeCalendarAdapter implements CalendarAdapter {
       throw error;
     }
 
-    const externalEventId = `fake-${event.operationId}`;
+    const externalEventId = this.eventIdFor(event.operationId);
     this.events.set(externalEventId, event);
 
     if (this.createThenThrow) {

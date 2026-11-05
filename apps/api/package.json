@@ -10,7 +10,8 @@
     "test": "jest --runInBand",
     "lint": "eslint \"src/**/*.ts\" \"test/**/*.ts\" --no-error-on-unmatched-pattern",
     "migrate": "tsx src/cli/migrate.ts",
-    "seed": "tsx src/cli/seed.ts"
+    "seed": "tsx src/cli/seed.ts",
+    "reconcile": "tsx src/cli/reconcile.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

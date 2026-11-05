@@ -12,6 +12,7 @@ const event = {
 describe('FakeCalendarAdapter', () => {
   it('creates, reads and cancels an event with a deterministic id', async () => {
     const calendar = new FakeCalendarAdapter();
+    expect(calendar.eventIdFor('op-1')).toBe('fake-op-1');
     const created = await calendar.createEvent(event);
     expect(created.externalEventId).toBe('fake-op-1');
     expect(await calendar.getEvent(created.externalEventId)).toMatchObject({ exists: true });

@@ -14,6 +14,7 @@ export interface CalendarEventLookup {
 }
 
 export interface CalendarAdapter {
+  eventIdFor(operationId: string): string;
   createEvent(event: CalendarEvent): Promise<{ externalEventId: string }>;
   getEvent(externalEventId: string): Promise<CalendarEventLookup>;
   cancelEvent(externalEventId: string): Promise<void>;
