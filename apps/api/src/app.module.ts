@@ -11,19 +11,30 @@ import { OwnerNotifier, NoopOwnerNotifier } from './channels/owner-notifier';
 import { CHANNEL_ADAPTER, OWNER_NOTIFIER } from './channels/tokens';
 import { TelegramAdapter } from './channels/telegram/telegram.adapter';
 import { TelegramWebhookController } from './channels/telegram/telegram.webhook.controller';
+import { CalendarAdapter } from './calendar/calendar-adapter';
+import { FakeCalendarAdapter } from './calendar/fake-calendar.adapter';
+import { CALENDAR_ADAPTER } from './calendar/tokens';
 import { AppEnv } from './config/env';
 import { createPool } from './db/pool';
 import { AiInvocationsRepository } from './db/repositories/ai-invocations.repository';
+import { AppointmentsRepository } from './db/repositories/appointments.repository';
 import { AuditRepository } from './db/repositories/audit.repository';
+import { CatalogRepository } from './db/repositories/catalog.repository';
 import { ChannelsRepository } from './db/repositories/channels.repository';
 import { ConversationsRepository } from './db/repositories/conversations.repository';
 import { KnowledgeRepository } from './db/repositories/knowledge.repository';
+import { LocksRepository } from './db/repositories/locks.repository';
 import { MessagesRepository } from './db/repositories/messages.repository';
+import { OperationsRepository } from './db/repositories/operations.repository';
 import { PatientsRepository } from './db/repositories/patients.repository';
 import { TicketsRepository } from './db/repositories/tickets.repository';
 import { WebhookEventsRepository } from './db/repositories/webhook-events.repository';
 import { DB_POOL, ENV } from './db/tokens';
 import { HealthController } from './health/health.controller';
+import { AvailabilityService } from './scheduling/availability.service';
+import { BookingService } from './scheduling/booking.service';
+import { SchedulingFlowService } from './scheduling/scheduling-flow.service';
+import { SlotEngine } from './scheduling/slot-engine';
 import { ResponseComposer } from './pipeline/composer.service';
 import { EscalationService } from './pipeline/escalation.service';
 import { FaqService } from './pipeline/faq.service';
@@ -36,6 +47,7 @@ export interface AppModuleOptions {
   env: AppEnv;
   pool?: Pool;
   channelAdapter?: ChannelAdapter;
+  calendarAdapter?: CalendarAdapter;
   aiGateway?: AiGateway;
   notifier?: OwnerNotifier;
 }
@@ -49,6 +61,14 @@ export class AppModule {
         ? new OpenAiIntentGateway(options.env.openaiApiKey)
         : new FakeAiGateway(DEFAULT_AI_RULES));
     const notifier = options.notifier ?? new NoopOwnerNotifier();
+    const calendarAdapter =
+      options.calendarAdapter ??
+      (options.env.nodeEnv === 'production' ? null : new FakeCalendarAdapter());
+    if (!calendarAdapter) {
+      throw new Error(
+        'Calendar adapter is not configured for production; refusing to use the fake adapter',
+      );
+    }
 
     return {
       module: AppModule,
@@ -113,6 +133,95 @@ export class AppModule {
           provide: KnowledgeRepository,
           useFactory: (pool: Pool) => new KnowledgeRepository(pool),
           inject: [DB_POOL],
+        },
+        {
+          provide: CALENDAR_ADAPTER,
+          useValue: calendarAdapter,
+        },
+        {
+          provide: CatalogRepository,
+          useFactory: (pool: Pool) => new CatalogRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: AppointmentsRepository,
+          useFactory: (pool: Pool) => new AppointmentsRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: OperationsRepository,
+          useFactory: (pool: Pool) => new OperationsRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: LocksRepository,
+          useFactory: (pool: Pool) => new LocksRepository(pool),
+          inject: [DB_POOL],
+        },
+        SlotEngine,
+        {
+          provide: AvailabilityService,
+          useFactory: (catalog: CatalogRepository, engine: SlotEngine) =>
+            new AvailabilityService(catalog, engine, {
+              granularityMinutes: 15,
+              minAdvanceMinutes: 120,
+              maxHorizonDays: 90,
+            }),
+          inject: [CatalogRepository, SlotEngine],
+        },
+        {
+          provide: BookingService,
+          useFactory: (
+            catalog: CatalogRepository,
+            availability: AvailabilityService,
+            appointments: AppointmentsRepository,
+            operations: OperationsRepository,
+            locks: LocksRepository,
+            calendar: CalendarAdapter,
+          ) =>
+            new BookingService({
+              catalog,
+              availability,
+              appointments,
+              operations,
+              locks,
+              calendar,
+              now: () => new Date(),
+            }),
+          inject: [
+            CatalogRepository,
+            AvailabilityService,
+            AppointmentsRepository,
+            OperationsRepository,
+            LocksRepository,
+            CALENDAR_ADAPTER,
+          ],
+        },
+        {
+          provide: SchedulingFlowService,
+          useFactory: (
+            catalog: CatalogRepository,
+            availability: AvailabilityService,
+            appointments: AppointmentsRepository,
+            patients: PatientsRepository,
+            booking: BookingService,
+          ) =>
+            new SchedulingFlowService({
+              catalog,
+              availability,
+              appointments,
+              patients,
+              booking,
+              now: () => new Date(),
+              horizonDays: 7,
+            }),
+          inject: [
+            CatalogRepository,
+            AvailabilityService,
+            AppointmentsRepository,
+            PatientsRepository,
+            BookingService,
+          ],
         },
         SafetyService,
         ResponseComposer,
@@ -179,6 +288,7 @@ export class AppModule {
             faq: FaqService,
             escalation: EscalationService,
             composer: ResponseComposer,
+            schedulingFlow: SchedulingFlowService,
             channel: ChannelAdapter,
           ) =>
             new InboundService({
@@ -192,6 +302,7 @@ export class AppModule {
               faq,
               escalation,
               composer,
+              schedulingFlow,
               channel,
               slaMinutes: options.env.slaMinutes,
             }),
@@ -206,6 +317,7 @@ export class AppModule {
             FaqService,
             EscalationService,
             ResponseComposer,
+            SchedulingFlowService,
             CHANNEL_ADAPTER,
           ],
         },

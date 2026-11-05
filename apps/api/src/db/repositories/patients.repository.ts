@@ -9,6 +9,12 @@ export interface CreateProvisionalContactInput {
   displayName?: string | null;
 }
 
+export interface PatientIdentity {
+  id: string;
+  fullName: string;
+  birthDate: string | null;
+}
+
 export class PatientsRepository {
   constructor(private readonly db: Queryable) {}
 
@@ -38,5 +44,19 @@ export class PatientsRepository {
       [input.tenantId, input.channel, input.externalUserId, input.displayName ?? null],
     );
     return rows[0] as PatientContact;
+  }
+
+  async findPatientByContact(
+    tenantId: string,
+    contactId: string,
+  ): Promise<PatientIdentity | null> {
+    const { rows } = await this.db.query(
+      `select p.id, p.full_name as "fullName", p.birth_date as "birthDate"
+       from patient_contacts c
+       join patients p on p.tenant_id = c.tenant_id and p.id = c.patient_id
+       where c.tenant_id = $1 and c.id = $2`,
+      [tenantId, contactId],
+    );
+    return (rows[0] as PatientIdentity | undefined) ?? null;
   }
 }

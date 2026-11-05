@@ -1,0 +1,1 @@
+export const CALENDAR_ADAPTER = Symbol('CALENDAR_ADAPTER');

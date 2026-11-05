@@ -135,3 +135,7 @@ export async function seedKnowledge(
     );
   }
 }
+
+export { seedSchedulingFixture as seedScheduling } from '../../src/seed/scheduling-fixture';
+export type { SeedSchedulingResult } from '../../src/seed/scheduling-fixture';
+

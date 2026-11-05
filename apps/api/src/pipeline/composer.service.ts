@@ -21,6 +21,8 @@ export class ResponseComposer {
         return 'Para te ajudar, pode me contar um pouco mais sobre o que você precisa?';
       case 'HUMAN_ACTIVE_SILENT':
         return null;
+      case 'FLOW_REPLY':
+        return decision.result.reply;
     }
   }
 }

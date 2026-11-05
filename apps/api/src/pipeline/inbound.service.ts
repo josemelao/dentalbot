@@ -7,6 +7,7 @@ import { ConversationsRepository } from '../db/repositories/conversations.reposi
 import { MessagesRepository } from '../db/repositories/messages.repository';
 import { Conversation, Message, PatientContact } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
+import { parseSchedulingContext, SchedulingFlowService } from '../scheduling/scheduling-flow.service';
 import { Decision } from './decision';
 import { EscalationService } from './escalation.service';
 import { FaqService } from './faq.service';
@@ -37,6 +38,7 @@ export interface InboundDependencies {
   faq: FaqService;
   escalation: EscalationService;
   composer: ResponseComposer;
+  schedulingFlow: SchedulingFlowService;
   channel: ChannelAdapter;
   slaMinutes: number;
 }
@@ -85,46 +87,103 @@ export class InboundService {
         conversation.id,
       );
 
+      let decision: Decision;
+
       if (openTicket) {
         await this.deps.conversations.updateState(
           normalized.tenantId,
           conversation.id,
           'HUMAN_ACTIVE',
         );
-        await this.deps.audit.append({
-          tenantId: normalized.tenantId,
-          actorType: 'system',
-          action: 'human_active_no_reply',
-          entityType: 'conversation',
-          entityId: conversation.id,
-          correlationId,
-        });
 
-        return {
-          success: true,
-          status: 'REQUIRES_HUMAN',
-          data: {
+        const text = normalized.content ?? '';
+        const triage =
+          normalized.messageType === 'text'
+            ? this.deps.safety.triage(text)
+            : { tier: 'ADMINISTRATIVE' as const, matchedRule: null, confidence: 0.5 };
+
+        if (triage.tier !== 'EMERGENCY') {
+          await this.deps.audit.append({
             tenantId: normalized.tenantId,
+            actorType: 'system',
+            action: 'human_active_no_reply',
+            entityType: 'conversation',
+            entityId: conversation.id,
             correlationId,
-            normalized,
-            contact,
-            conversation: { ...conversation, state: 'HUMAN_ACTIVE' as const },
-            inboundMessage,
-            recentMessages,
-            humanActive: true,
-          },
-          error: null,
-          correlationId,
+          });
+
+          return {
+            success: true,
+            status: 'REQUIRES_HUMAN',
+            data: {
+              tenantId: normalized.tenantId,
+              correlationId,
+              normalized,
+              contact,
+              conversation: { ...conversation, state: 'HUMAN_ACTIVE' as const },
+              inboundMessage,
+              recentMessages,
+              humanActive: true,
+            },
+            error: null,
+            correlationId,
+          };
+        }
+
+        // Emergencies override the human-active silence.
+        try {
+          await this.deps.escalation.create({
+            tenantId: normalized.tenantId,
+            conversationId: conversation.id,
+            patientContactId: conversation.patientContactId,
+            reason: 'EMERGENCY',
+            summary: 'Possível emergência odontológica durante conversa humana',
+            question: text,
+          });
+        } catch {
+          // The safety reply must go out even if the ticket cannot be persisted.
+        }
+        decision = {
+          kind: 'EMERGENCY_PROTOCOL',
+          rule: triage.matchedRule ?? 'deterministic_emergency',
         };
+      } else {
+        decision = await this.decide(normalized, conversation, inboundMessage, recentMessages);
       }
 
-      const decision = await this.decide(normalized, conversation, inboundMessage, recentMessages);
       const outboundText = this.deps.composer.compose(decision, {
         slaMinutes: this.deps.slaMinutes,
       });
 
       let status: ProcessingStatus = 'COMPLETED';
-      if (decision.kind === 'HOLDING_ESCALATED' || decision.kind === 'EMERGENCY_PROTOCOL') {
+      if (decision.kind === 'FLOW_REPLY') {
+        await this.deps.conversations.updateContext(
+          normalized.tenantId,
+          conversation.id,
+          decision.result.context,
+        );
+
+        if (decision.result.escalate) {
+          await this.deps.escalation.create({
+            tenantId: normalized.tenantId,
+            conversationId: conversation.id,
+            patientContactId: conversation.patientContactId,
+            reason: decision.result.escalate.reason,
+            summary: decision.result.escalate.summary,
+            question: normalized.content ?? '',
+          });
+        }
+
+        status =
+          decision.result.status === 'REQUIRES_HUMAN'
+            ? 'REQUIRES_HUMAN'
+            : decision.result.status === 'COMPLETED'
+              ? 'COMPLETED'
+              : 'PENDING';
+      } else if (
+        decision.kind === 'HOLDING_ESCALATED' ||
+        decision.kind === 'EMERGENCY_PROTOCOL'
+      ) {
         status = 'REQUIRES_HUMAN';
       }
 
@@ -192,7 +251,7 @@ export class InboundService {
           conversation,
           inboundMessage,
           recentMessages,
-          humanActive: false,
+          humanActive: openTicket !== null,
         },
         error: null,
         correlationId,
@@ -239,6 +298,18 @@ export class InboundService {
         // The safety reply must go out even if the ticket cannot be persisted.
       }
       return { kind: 'EMERGENCY_PROTOCOL', rule: triage.matchedRule ?? 'deterministic_emergency' };
+    }
+
+    const activeContext = parseSchedulingContext(conversation.context);
+    if (activeContext) {
+      const result = await this.deps.schedulingFlow.handleReply({
+        tenantId: normalized.tenantId,
+        conversationId: conversation.id,
+        patientContactId: conversation.patientContactId,
+        text,
+        context: activeContext,
+      });
+      return { kind: 'FLOW_REPLY', result };
     }
 
     const classified = await this.deps.intent.classify({
@@ -293,6 +364,22 @@ export class InboundService {
       return { kind: 'HOLDING_ESCALATED', ticket };
     }
 
+    if (
+      classified.intent === 'SCHEDULE_REQUEST' ||
+      classified.intent === 'RESCHEDULE_REQUEST' ||
+      classified.intent === 'CANCEL_REQUEST'
+    ) {
+      const result = await this.deps.schedulingFlow.start({
+        tenantId: normalized.tenantId,
+        conversationId: conversation.id,
+        patientContactId: conversation.patientContactId,
+        text,
+        intent: classified.intent,
+        context: null,
+      });
+      return { kind: 'FLOW_REPLY', result };
+    }
+
     if (classified.intent === 'FAQ_ADMIN') {
       const answer = await this.deps.faq.answer(normalized.tenantId, text);
       if (answer.found) {
@@ -305,22 +392,6 @@ export class InboundService {
         patientContactId: conversation.patientContactId,
         reason: 'UNKNOWN',
         summary: 'Pergunta administrativa sem resposta aprovada',
-        question: text,
-      });
-      return { kind: 'HOLDING_ESCALATED', ticket };
-    }
-
-    if (
-      classified.intent === 'SCHEDULE_REQUEST' ||
-      classified.intent === 'RESCHEDULE_REQUEST' ||
-      classified.intent === 'CANCEL_REQUEST'
-    ) {
-      const ticket = await this.deps.escalation.create({
-        tenantId: normalized.tenantId,
-        conversationId: conversation.id,
-        patientContactId: conversation.patientContactId,
-        reason: 'UNKNOWN',
-        summary: 'Agendamento ainda não habilitado nesta fase',
         question: text,
       });
       return { kind: 'HOLDING_ESCALATED', ticket };
