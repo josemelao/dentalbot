@@ -90,6 +90,8 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   leave a patient without a reply or a fallback.
 - Accepting a ticket disables the patient-facing fallback, so the idle job must
   warn the owners when an accepted ticket has no human reply.
+- In shadow mode the bot only drafts. Nothing reaches the patient without a human
+  decision, **except the emergency protocol**, which always bypasses the queue.
 
 ## Owner channel invariants
 

@@ -36,6 +36,7 @@ import { OperationsRepository } from './db/repositories/operations.repository';
 import { PatientsRepository } from './db/repositories/patients.repository';
 import { RemindersRepository } from './db/repositories/reminders.repository';
 import { RescheduleProposalRepository } from './db/repositories/reschedule-proposals.repository';
+import { PendingRepliesRepository } from './db/repositories/pending-replies.repository';
 import { TicketsRepository } from './db/repositories/tickets.repository';
 import { WebhookEventsRepository } from './db/repositories/webhook-events.repository';
 import { DB_POOL, ENV } from './db/tokens';
@@ -52,6 +53,7 @@ import { ReminderService } from './scheduling/reminder.service';
 import { RescheduleProposalService } from './scheduling/reschedule-proposal.service';
 import { ResponseComposer } from './pipeline/composer.service';
 import { EscalationService } from './pipeline/escalation.service';
+import { PendingReplyService, ShadowModeService } from './pipeline/pending-reply.service';
 import { OwnerCommandService } from './pipeline/owner-command.service';
 import { FaqService } from './pipeline/faq.service';
 import { IdentityService } from './pipeline/identity.service';
@@ -410,6 +412,8 @@ export class AppModule {
             conversations: ConversationsRepository,
             patients: PatientsRepository,
             templates: MessageTemplatesRepository,
+            pending: PendingRepliesRepository,
+            shadow: ShadowModeService,
           ) =>
             new PanelService({
               pool,
@@ -421,6 +425,8 @@ export class AppModule {
               conversations,
               patients,
               templates,
+              pending,
+              shadow,
             }),
           inject: [
             DB_POOL,
@@ -432,6 +438,8 @@ export class AppModule {
             ConversationsRepository,
             PatientsRepository,
             MessageTemplatesRepository,
+            PendingRepliesRepository,
+            ShadowModeService,
           ],
         },
         {
@@ -526,6 +534,34 @@ export class AppModule {
           ],
         },
         {
+          provide: PendingRepliesRepository,
+          useFactory: (pool: Pool) => new PendingRepliesRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: ShadowModeService,
+          useFactory: (pool: Pool) => new ShadowModeService(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: PendingReplyService,
+          useFactory: (
+            pending: PendingRepliesRepository,
+            messages: MessagesRepository,
+            conversations: ConversationsRepository,
+            patients: PatientsRepository,
+            channel: ChannelAdapter,
+          ) =>
+            new PendingReplyService({ pending, messages, conversations, patients, channel }),
+          inject: [
+            PendingRepliesRepository,
+            MessagesRepository,
+            ConversationsRepository,
+            PatientsRepository,
+            CHANNEL_ADAPTER,
+          ],
+        },
+        {
           provide: InboundService,
           useFactory: (
             identity: IdentityService,
@@ -540,6 +576,8 @@ export class AppModule {
             composer: ResponseComposer,
             schedulingFlow: SchedulingFlowService,
             rescheduleProposal: RescheduleProposalService,
+            shadow: ShadowModeService,
+            pendingReplies: PendingReplyService,
             channel: ChannelAdapter,
             router: UnknownRouter | null,
           ) =>
@@ -556,6 +594,8 @@ export class AppModule {
               composer,
               schedulingFlow,
               rescheduleProposal,
+              shadow,
+              pendingReplies,
               channel,
               router,
               slaMinutes: options.env.slaMinutes,
@@ -573,6 +613,8 @@ export class AppModule {
             ResponseComposer,
             SchedulingFlowService,
             RescheduleProposalService,
+            ShadowModeService,
+            PendingReplyService,
             CHANNEL_ADAPTER,
             UNKNOWN_ROUTER,
           ],

@@ -194,6 +194,17 @@ Placeholders (`{{service}}`, `{{slots}}`, `{{when}}`, `{{sla}}`, `{{services}}`)
 are filled by the system. **Locked keys** — emergency protocol and the SLA
 holding message — are shown read-only and ignored on write.
 
+## Shadow mode
+
+Shadow mode makes the bot **draft** instead of sending. A human approves, edits
+or discards each reply in the panel before the patient sees it.
+
+It is a per-clinic switch, **off by default**, toggled in the panel. The
+**emergency protocol always bypasses it** — safety never waits for approval.
+
+Graduation path for a pilot: full shadow → auto for safe intents (FAQ,
+scheduling) → auto everywhere, keeping clinical and unknown on approval.
+
 ## Phase 2 boundaries
 
 - Scheduling, rescheduling and cancellation are implemented against the internal

@@ -21,6 +21,7 @@ import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { ENV } from '../db/tokens';
 import { isLocked, setTemplateOverride } from '../messages/templates';
 import { EscalationService } from '../pipeline/escalation.service';
+import { PendingReplyService, ShadowModeService } from '../pipeline/pending-reply.service';
 import { ReminderService } from '../scheduling/reminder.service';
 import { RescheduleProposalService } from '../scheduling/reschedule-proposal.service';
 import { PanelAuthService, PanelSession } from './panel-auth.service';
@@ -54,6 +55,8 @@ export class PanelController {
     private readonly reminders: ReminderService,
     private readonly proposals: RescheduleProposalService,
     private readonly templates: MessageTemplatesRepository,
+    private readonly pendingReplies: PendingReplyService,
+    private readonly shadow: ShadowModeService,
   ) {}
 
   @Get('login')
@@ -194,6 +197,58 @@ export class PanelController {
     const clinic = await this.requireClinic();
 
     await this.reminders.sendNow(clinic.id, id);
+    return this.back(body.token);
+  }
+
+  @Post('shadow')
+  @Redirect()
+  async toggleShadow(
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    await this.shadow.setEnabled(clinic.id, body.enabled === 'on');
+    return this.back(body.token);
+  }
+
+  @Post('pendentes/:id/enviar')
+  @Redirect()
+  async approvePending(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    const session = this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    await this.pendingReplies.approve({
+      tenantId: clinic.id,
+      id,
+      userId: session?.userId ?? null,
+      content: body.content,
+    });
+
+    return this.back(body.token);
+  }
+
+  @Post('pendentes/:id/descartar')
+  @Redirect()
+  async discardPending(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    const session = this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    await this.pendingReplies.discard({
+      tenantId: clinic.id,
+      id,
+      userId: session?.userId ?? null,
+    });
+
     return this.back(body.token);
   }
 

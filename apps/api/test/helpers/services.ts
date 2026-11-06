@@ -21,6 +21,8 @@ import { SlotEngine } from '../../src/scheduling/slot-engine';
 import { BookingService } from '../../src/scheduling/booking.service';
 import { RescheduleProposalService } from '../../src/scheduling/reschedule-proposal.service';
 import { RescheduleProposalRepository } from '../../src/db/repositories/reschedule-proposals.repository';
+import { PendingRepliesRepository } from '../../src/db/repositories/pending-replies.repository';
+import { PendingReplyService, ShadowModeService } from '../../src/pipeline/pending-reply.service';
 import { SchedulingFlowService } from '../../src/scheduling/scheduling-flow.service';
 import { ResponseComposer } from '../../src/pipeline/composer.service';
 import { EscalationService } from '../../src/pipeline/escalation.service';
@@ -104,6 +106,15 @@ export function buildInboundService(
     horizonDays: 30,
   });
 
+  const shadow = new ShadowModeService(pool);
+  const pendingReplies = new PendingReplyService({
+    pending: new PendingRepliesRepository(pool),
+    messages,
+    conversations,
+    patients,
+    channel,
+  });
+
   return new InboundService({
     identity,
     conversations,
@@ -117,6 +128,8 @@ export function buildInboundService(
     composer,
     schedulingFlow,
     rescheduleProposal,
+    shadow,
+    pendingReplies,
     router: options.router ?? null,
     channel,
     slaMinutes: 15,

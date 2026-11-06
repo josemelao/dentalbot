@@ -447,6 +447,108 @@ describe('panel', () => {
     await app.close();
   });
 
+  it('holds the reply in shadow mode and sends it after approval', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    await pool.query(`update patient_contacts set external_user_id = '42' where id = $1`, [
+      clinic.contactId,
+    ]);
+    await pool.query(`update clinics set shadow_mode = true where id = $1`, [clinic.tenantId]);
+
+    const { app, fakeChannel } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    await request(server)
+      .post(`/webhooks/telegram/${clinic.channelExternalId}`)
+      .set('x-telegram-bot-api-secret-token', 'test-secret')
+      .send({
+        update_id: 800,
+        message: {
+          message_id: 800,
+          date: 1730000000,
+          chat: { id: 42 },
+          from: { id: 42 },
+          text: '/start',
+        },
+      });
+
+    expect(fakeChannel.sent).toHaveLength(0);
+
+    const pending = await pool.query(
+      `select id from pending_replies where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(pending.rows).toHaveLength(1);
+
+    await request(server)
+      .post(`/painel/pendentes/${pending.rows[0].id}/enviar`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('secretária virtual');
+
+    const after = await pool.query(
+      `select status from pending_replies where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(after.rows[0].status).toBe('SENT');
+
+    await app.close();
+  });
+
+  it('lets the emergency protocol bypass shadow mode', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    await pool.query(`update patient_contacts set external_user_id = '42' where id = $1`, [
+      clinic.contactId,
+    ]);
+    await pool.query(`update clinics set shadow_mode = true where id = $1`, [clinic.tenantId]);
+
+    const { app, fakeChannel } = await buildTestApp({ pool });
+
+    await request((app as any).getHttpServer())
+      .post(`/webhooks/telegram/${clinic.channelExternalId}`)
+      .set('x-telegram-bot-api-secret-token', 'test-secret')
+      .send({
+        update_id: 801,
+        message: {
+          message_id: 801,
+          date: 1730000000,
+          chat: { id: 42 },
+          from: { id: 42 },
+          text: 'não consigo respirar',
+        },
+      });
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('SAMU');
+
+    const pending = await pool.query(
+      `select count(*)::int as n from pending_replies where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(pending.rows[0].n).toBe(0);
+
+    await app.close();
+  });
+
+  it('toggles shadow mode from the panel', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const { app } = await buildTestApp({ pool });
+
+    await request((app as any).getHttpServer())
+      .post('/painel/shadow')
+      .type('form')
+      .send({ token: 'test-panel', enabled: 'on' });
+
+    const row = await pool.query(`select shadow_mode from clinics where id = $1`, [
+      clinic.tenantId,
+    ]);
+    expect(row.rows[0].shadow_mode).toBe(true);
+
+    await app.close();
+  });
+
   it('replies to a ticket from the panel', async () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });

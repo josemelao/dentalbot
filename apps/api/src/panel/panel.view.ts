@@ -144,6 +144,35 @@ const templateRows = (data: PanelData, token: string): string =>
     })
     .join('');
 
+const pendingRows = (data: PanelData, token: string): string => {
+  if (data.pendingReplies.length === 0) {
+    return '<tr><td colspan="3" class="empty">Nenhuma resposta aguardando aprovação.</td></tr>';
+  }
+
+  return data.pendingReplies
+    .map((pending) => {
+      const formId = `pend-${pending.id}`;
+      const time = DateTime.fromJSDate(pending.createdAt)
+        .setZone(data.timezone)
+        .toFormat('dd/MM HH:mm');
+      return `<tr>
+        <td>${escape(pending.patientLabel)}<div class="muted">${time}</div></td>
+        <td><textarea form="${formId}" name="content" rows="3">${escape(pending.content)}</textarea></td>
+        <td>
+          <form id="${formId}" method="post" action="/painel/pendentes/${pending.id}/enviar">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit">enviar</button>
+          </form>
+          <form method="post" action="/painel/pendentes/${pending.id}/descartar">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit" class="ghost">descartar</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join('');
+};
+
 const ticketRows = (data: PanelData, token: string): string => {
   if (data.tickets.length === 0) {
     return '<tr><td colspan="4" class="empty">Nenhum ticket aberto.</td></tr>';
@@ -375,6 +404,8 @@ export function renderPanel(data: PanelData, token: string): string {
   button:disabled { opacity:.45; cursor:not-allowed; }
   form.reply { display:flex; gap:6px; margin-top:8px; }
   form.reply input { flex:1; }
+  form.inline { display:flex; gap:8px; align-items:center; font-weight:400; }
+  form.inline input[type=checkbox] { width:auto; }
 </style>
 </head>
 <body>
@@ -394,6 +425,22 @@ export function renderPanel(data: PanelData, token: string): string {
     <table>
       <thead><tr><th>Hora</th><th>Serviço</th><th>Paciente</th><th>Status</th><th>Ação</th></tr></thead>
       <tbody>${agendaRows(data, token)}</tbody>
+    </table>
+  </section>
+  <section>
+    <h2>
+      Modo sombra
+      <form method="post" action="/painel/shadow" class="inline">
+        <input type="hidden" name="token" value="${escape(token)}">
+        <label class="muted">
+          <input type="checkbox" name="enabled"${data.shadowMode ? ' checked' : ''}> aprovar antes de enviar
+        </label>
+        <button type="submit">salvar</button>
+      </form>
+    </h2>
+    <table>
+      <thead><tr><th>Paciente</th><th>Resposta sugerida</th><th></th></tr></thead>
+      <tbody>${pendingRows(data, token)}</tbody>
     </table>
   </section>
   <section>

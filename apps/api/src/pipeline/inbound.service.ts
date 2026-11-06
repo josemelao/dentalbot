@@ -10,6 +10,7 @@ import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { UnknownRouter } from '../ai/unknown-router';
 import { parseSchedulingContext, SchedulingFlowService } from '../scheduling/scheduling-flow.service';
 import { RescheduleProposalService } from '../scheduling/reschedule-proposal.service';
+import { PendingReplyService, ShadowModeService } from './pending-reply.service';
 import { Decision } from './decision';
 import { EscalationService } from './escalation.service';
 import { FaqService } from './faq.service';
@@ -42,6 +43,8 @@ export interface InboundDependencies {
   composer: ResponseComposer;
   schedulingFlow: SchedulingFlowService;
   rescheduleProposal: RescheduleProposalService;
+  shadow: ShadowModeService;
+  pendingReplies: PendingReplyService;
   router: UnknownRouter | null;
   channel: ChannelAdapter;
   slaMinutes: number;
@@ -229,7 +232,21 @@ export class InboundService {
         status = 'REQUIRES_HUMAN';
       }
 
-      if (outboundText !== null) {
+      const shadow =
+        outboundText !== null &&
+        decision.kind !== 'EMERGENCY_PROTOCOL' &&
+        (await this.deps.shadow.isEnabled(normalized.tenantId));
+
+      if (shadow && outboundText !== null) {
+        // Draft only: a human decides before the patient sees it.
+        await this.deps.pendingReplies.enqueue({
+          tenantId: normalized.tenantId,
+          conversationId: conversation.id,
+          patientContactId: conversation.patientContactId,
+          content: outboundText,
+        });
+        status = 'PENDING';
+      } else if (outboundText !== null) {
         try {
           await this.deps.channel.send({
             externalUserId: normalized.externalUserId,

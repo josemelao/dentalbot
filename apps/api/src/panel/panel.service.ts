@@ -5,10 +5,12 @@ import { ConversationsRepository } from '../db/repositories/conversations.reposi
 import { KnowledgeRepository } from '../db/repositories/knowledge.repository';
 import { MessagesRepository } from '../db/repositories/messages.repository';
 import { MessageTemplatesRepository } from '../db/repositories/message-templates.repository';
+import { PendingRepliesRepository } from '../db/repositories/pending-replies.repository';
 import { PatientsRepository } from '../db/repositories/patients.repository';
 import { KnowledgeEntry, Message, Service } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { TEMPLATE_DEFINITIONS } from '../messages/templates';
+import { ShadowModeService } from '../pipeline/pending-reply.service';
 import { AttendanceService, DayRow } from '../scheduling/attendance.service';
 
 export interface PanelTicket {
@@ -39,6 +41,13 @@ export interface PanelTemplate {
   edited: boolean;
 }
 
+export interface PanelPendingReply {
+  id: string;
+  content: string;
+  patientLabel: string;
+  createdAt: Date;
+}
+
 export interface PanelData {
   clinicName: string;
   timezone: string;
@@ -48,6 +57,8 @@ export interface PanelData {
   knowledge: KnowledgeEntry[];
   services: Service[];
   templates: PanelTemplate[];
+  shadowMode: boolean;
+  pendingReplies: PanelPendingReply[];
 }
 
 export interface PanelServiceDependencies {
@@ -60,6 +71,8 @@ export interface PanelServiceDependencies {
   conversations: ConversationsRepository;
   patients: PatientsRepository;
   templates: MessageTemplatesRepository;
+  pending: PendingRepliesRepository;
+  shadow: ShadowModeService;
 }
 
 /** Read-only view model for the pilot panel. No writes live here yet. */
@@ -84,13 +97,16 @@ export class PanelService {
 
     const date = dateISO ?? DateTime.now().setZone(clinic.timezone).toISODate() ?? '';
 
-    const [agenda, tickets, knowledge, services, templateRows] = await Promise.all([
-      this.deps.attendance.listDay(clinic.id, date),
-      this.deps.tickets.listOpen(clinic.id),
-      this.deps.knowledge.listAll(clinic.id),
-      this.deps.catalog.listAllServices(clinic.id),
-      this.deps.templates.listActive(clinic.id),
-    ]);
+    const [agenda, tickets, knowledge, services, templateRows, pending, shadowMode] =
+      await Promise.all([
+        this.deps.attendance.listDay(clinic.id, date),
+        this.deps.tickets.listOpen(clinic.id),
+        this.deps.knowledge.listAll(clinic.id),
+        this.deps.catalog.listAllServices(clinic.id),
+        this.deps.templates.listActive(clinic.id),
+        this.deps.pending.listPending(clinic.id),
+        this.deps.shadow.isEnabled(clinic.id),
+      ]);
 
     const overrides = new Map(templateRows.map((row) => [row.key, row.variants]));
     const templates = TEMPLATE_DEFINITIONS.map((definition) => ({
@@ -109,6 +125,13 @@ export class PanelService {
       knowledge,
       services,
       templates,
+      shadowMode,
+      pendingReplies: pending.map((row) => ({
+        id: row.id,
+        content: row.content,
+        patientLabel: row.patientLabel?.trim() || `contato •••${row.externalUserId.slice(-4)}`,
+        createdAt: row.createdAt,
+      })),
       tickets: tickets.map((ticket) => ({
         id: ticket.id,
         reason: ticket.reason,
