@@ -7,6 +7,7 @@ import { ConversationsRepository } from '../db/repositories/conversations.reposi
 import { MessagesRepository } from '../db/repositories/messages.repository';
 import { Conversation, Message, PatientContact } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
+import { UnknownRouter } from '../ai/unknown-router';
 import { parseSchedulingContext, SchedulingFlowService } from '../scheduling/scheduling-flow.service';
 import { Decision } from './decision';
 import { EscalationService } from './escalation.service';
@@ -39,6 +40,7 @@ export interface InboundDependencies {
   escalation: EscalationService;
   composer: ResponseComposer;
   schedulingFlow: SchedulingFlowService;
+  router: UnknownRouter | null;
   channel: ChannelAdapter;
   slaMinutes: number;
 }
@@ -174,6 +176,19 @@ export class InboundService {
         }
       } else {
         decision = await this.decide(normalized, conversation, inboundMessage, recentMessages);
+
+        // A resolved message clears the "one clarification" budget.
+        if (
+          decision.kind !== 'CLARIFY' &&
+          decision.kind !== 'FLOW_REPLY' &&
+          this.unknownAttempts(conversation) > 0
+        ) {
+          await this.deps.conversations.updateContext(
+            normalized.tenantId,
+            conversation.id,
+            {},
+          );
+        }
       }
 
       const outboundText = this.deps.composer.compose(decision, {
@@ -431,8 +446,58 @@ export class InboundService {
       return { kind: 'HOLDING_ESCALATED', ticket };
     }
 
+    if (classified.intent === 'SMALL_TALK') {
+      return { kind: 'SMALL_TALK' };
+    }
+
     if (classified.intent === 'GREETING') {
       return { kind: 'GREETING' };
+    }
+
+    // Second chance: an LLM router may place the message on a safe path. It
+    // returns a route, never a sentence, and an FAQ route must point at an
+    // approved entry that exists in the database.
+    if (classified.intent === 'UNKNOWN' && this.deps.router) {
+      const routed = await this.deps.router.resolve({
+        tenantId: normalized.tenantId,
+        text,
+        recentMessages: recentMessages.map((message) => ({
+          direction: message.direction,
+          content: message.content,
+        })),
+      });
+
+      if (routed) {
+        if (routed.route === 'FAQ') {
+          return { kind: 'ANSWER_FAQ', entry: routed.entry };
+        }
+        if (routed.route === 'SMALL_TALK') {
+          return { kind: 'SMALL_TALK' };
+        }
+        if (routed.route !== 'HUMAN') {
+          const result = await this.deps.schedulingFlow.start({
+            tenantId: normalized.tenantId,
+            conversationId: conversation.id,
+            patientContactId: conversation.patientContactId,
+            text,
+            intent: this.routeToIntent(routed.route),
+            context: null,
+          });
+          return { kind: 'FLOW_REPLY', result };
+        }
+      }
+    }
+
+    // One clarification before escalating: a single ambiguous message should not
+    // become a ticket. The counter lives in the conversation context.
+    const attempts = this.unknownAttempts(conversation);
+    if (attempts < 1) {
+      await this.deps.conversations.updateContext(
+        normalized.tenantId,
+        conversation.id,
+        { ...(conversation.context ?? {}), unknownAttempts: attempts + 1 },
+      );
+      return { kind: 'CLARIFY', reason: 'first_unknown' };
     }
 
     const ticket = await this.deps.escalation.create({
@@ -444,5 +509,29 @@ export class InboundService {
       question: text,
     });
     return { kind: 'HOLDING_ESCALATED', ticket };
+  }
+
+  private routeToIntent(
+    route: 'SCHEDULE' | 'RESCHEDULE' | 'CANCEL' | 'LIST',
+  ):
+    | 'SCHEDULE_REQUEST'
+    | 'RESCHEDULE_REQUEST'
+    | 'CANCEL_REQUEST'
+    | 'LIST_APPOINTMENTS' {
+    switch (route) {
+      case 'SCHEDULE':
+        return 'SCHEDULE_REQUEST';
+      case 'RESCHEDULE':
+        return 'RESCHEDULE_REQUEST';
+      case 'CANCEL':
+        return 'CANCEL_REQUEST';
+      case 'LIST':
+        return 'LIST_APPOINTMENTS';
+    }
+  }
+
+  private unknownAttempts(conversation: Conversation): number {
+    const value = (conversation.context as Record<string, unknown> | null)?.unknownAttempts;
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
   }
 }

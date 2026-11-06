@@ -1,4 +1,6 @@
-import { getTestPool, seedClinic } from './helpers/db';
+import { UnknownRouter } from '../src/ai/unknown-router';
+import { KnowledgeRepository } from '../src/db/repositories/knowledge.repository';
+import { getTestPool, seedClinic, seedKnowledge } from './helpers/db';
 import { buildInboundService } from './helpers/services';
 
 const message = (overrides: Partial<any> = {}) => ({
@@ -76,6 +78,61 @@ describe('InboundService', () => {
       conversationId,
     ]);
     expect(rows[0].state).toBe('HUMAN_ACTIVE');
+  });
+
+  it('answers through the router instead of opening a ticket', async () => {
+    const pool = getTestPool();
+    const ids = await seedClinic(pool);
+    await seedKnowledge(pool, ids.tenantId, [
+      {
+        category: 'logistica',
+        question: 'Vocês abrem no sábado?',
+        answer: 'Não abrimos no sábado.',
+        keywords: ['sabado'],
+        status: 'approved',
+      },
+    ]);
+    const { rows } = await pool.query(
+      `select id from knowledge_entries where tenant_id = $1`,
+      [ids.tenantId],
+    );
+
+    const router = new UnknownRouter({
+      client: {
+        provider: 'fake',
+        model: 'fake-router',
+        async complete() {
+          return JSON.stringify({ route: 'FAQ', entryId: rows[0].id, confidence: 0.9 });
+        },
+      },
+      knowledge: new KnowledgeRepository(pool),
+      confidenceThreshold: 0.6,
+      now: () => new Date(),
+    });
+
+    const service = buildInboundService(pool, { router });
+    const result = await service.handle(
+      message({
+        tenantId: ids.tenantId,
+        externalChannelId: ids.channelExternalId,
+        content: 'vocês funcionam no sábado?',
+      }),
+      'corr-router',
+    );
+
+    expect(result.status).toBe('COMPLETED');
+
+    const tickets = await pool.query(
+      `select count(*)::int as n from human_tickets where tenant_id = $1`,
+      [ids.tenantId],
+    );
+    expect(tickets.rows[0].n).toBe(0);
+
+    const out = await pool.query(
+      `select content from messages where tenant_id = $1 and direction = 'out'`,
+      [ids.tenantId],
+    );
+    expect(out.rows[0].content).toBe('Não abrimos no sábado.');
   });
 
   it('fails safely when the channel is not configured', async () => {

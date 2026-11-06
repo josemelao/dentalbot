@@ -93,6 +93,47 @@ npm test
 The suite needs the PostgreSQL container. It creates and migrates
 `dental_assistant_test` automatically.
 
+## Conversational style
+
+The bot varies its wording (2–4 variants per message, pinned deterministically in
+tests) and shows a typing indicator before answering. The approved facts never
+change: FAQ answers still come verbatim from `knowledge_entries`, and the
+emergency protocol is a single fixed string.
+
+| Env | Effect |
+|---|---|
+| `MESSAGE_EMOJI` | `false` removes every emoji |
+| `TYPING_MIN_MS` / `TYPING_PER_CHAR_MS` / `TYPING_MAX_MS` | typing delay (default ~1–2s) |
+
+The patient can answer with a number, an ordinal, a weekday or a period of the
+day: `1`, `pode ser a segunda`, `sexta pode ser`, `qualquer um de manhã` (ambiguous
+asks again). Identity accepts `10/05/1990`, `1990-05-10` or
+`10 de maio de 1990`.
+
+### AI provider
+
+`AI_PROVIDER` accepts `fake` (default, deterministic), `openai` or `gemini`.
+The Gemini free tier works for testing: Flash models only, rate-limited, and
+**Google may use free-tier data to improve its products** — do not put real
+patient data through it. Use the paid tier (or OpenAI) for the pilot.
+
+### Unknown router
+
+When the deterministic rules miss, an LLM router gets a second chance. It returns
+a **route**, never a sentence:
+
+```
+UNKNOWN → router → { route: FAQ, entryId } → answers verbatim from the approved entry
+                 → { route: SCHEDULE | RESCHEDULE | CANCEL | LIST } → existing flow
+                 → { route: SMALL_TALK } → friendly reply
+                 → { route: HUMAN } → one clarifying question, then a ticket
+```
+
+Guardrails: the `entryId` must exist in the approved, in-force entries of that
+tenant; low confidence means `HUMAN`; an invalid answer from the model falls back
+to the clarify path. Without `AI_PROVIDER`, the router is disabled and behaviour
+is unchanged.
+
 ## Phase 2 boundaries
 
 - Scheduling, rescheduling and cancellation are implemented against the internal

@@ -198,6 +198,126 @@ describe('SchedulingFlowService', () => {
     expect(oldRow.rows[0].status).toBe('CANCELLED');
   });
 
+  it('accepts an ordinal instead of a number', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const { flow } = build(pool);
+
+    const result = await flow.handleReply({
+      tenantId: clinic.tenantId,
+      conversationId: clinic.conversationId!,
+      patientContactId: clinic.contactId!,
+      text: 'pode ser a segunda',
+      context: {
+        flow: 'SCHEDULE',
+        step: 'SLOT',
+        serviceId: s.cleaningServiceId,
+        timezone: 'America/Sao_Paulo',
+        idempotencyKey: 'ordinal',
+        expiresAt: '2026-11-08T15:30:00Z',
+        offeredSlots: [
+          { startAt: '2026-11-09T12:15:00Z', professionalIds: [s.caioId], resourceId: null },
+          { startAt: '2026-11-09T13:15:00Z', professionalIds: [s.caioId], resourceId: null },
+          { startAt: '2026-11-13T12:15:00Z', professionalIds: [s.caioId], resourceId: null },
+        ],
+      },
+    });
+
+    expect(result.context?.step).toBe('CONFIRM');
+    expect(result.reply).toContain('10:15');
+  });
+
+  it('accepts a weekday instead of a number', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const { flow } = build(pool);
+
+    const result = await flow.handleReply({
+      tenantId: clinic.tenantId,
+      conversationId: clinic.conversationId!,
+      patientContactId: clinic.contactId!,
+      text: 'sexta pode ser',
+      context: {
+        flow: 'SCHEDULE',
+        step: 'SLOT',
+        serviceId: s.cleaningServiceId,
+        timezone: 'America/Sao_Paulo',
+        idempotencyKey: 'weekday',
+        expiresAt: '2026-11-08T15:30:00Z',
+        offeredSlots: [
+          { startAt: '2026-11-09T12:15:00Z', professionalIds: [s.caioId], resourceId: null },
+          { startAt: '2026-11-09T13:15:00Z', professionalIds: [s.caioId], resourceId: null },
+          { startAt: '2026-11-13T12:15:00Z', professionalIds: [s.caioId], resourceId: null },
+        ],
+      },
+    });
+
+    expect(result.context?.step).toBe('CONFIRM');
+    expect(result.reply).toContain('13/11');
+  });
+
+  it('asks again when the choice is ambiguous', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const { flow } = build(pool);
+
+    const result = await flow.handleReply({
+      tenantId: clinic.tenantId,
+      conversationId: clinic.conversationId!,
+      patientContactId: clinic.contactId!,
+      text: 'qualquer um de manhã',
+      context: {
+        flow: 'SCHEDULE',
+        step: 'SLOT',
+        serviceId: s.cleaningServiceId,
+        timezone: 'America/Sao_Paulo',
+        idempotencyKey: 'ambiguous',
+        expiresAt: '2026-11-08T15:30:00Z',
+        offeredSlots: [
+          { startAt: '2026-11-09T12:15:00Z', professionalIds: [s.caioId], resourceId: null },
+          { startAt: '2026-11-09T13:15:00Z', professionalIds: [s.caioId], resourceId: null },
+        ],
+      },
+    });
+
+    expect(result.context?.step).toBe('SLOT');
+    expect(result.reply).toContain('1)');
+  });
+
+  it('accepts a birth date written in words', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const s = await seedScheduling(pool, clinic.tenantId);
+    const { flow, booking } = build(pool);
+    await linkPatient(pool, clinic);
+
+    const booked = await booking.book(bookingInput(clinic, s));
+    if (booked.status !== 'BOOKED') throw new Error('setup failed');
+
+    const started = await flow.start({
+      tenantId: clinic.tenantId,
+      conversationId: clinic.conversationId!,
+      patientContactId: clinic.contactId!,
+      text: 'quero cancelar',
+      intent: 'CANCEL_REQUEST',
+      context: null,
+    });
+
+    const verified = await flow.handleReply({
+      tenantId: clinic.tenantId,
+      conversationId: clinic.conversationId!,
+      patientContactId: clinic.contactId!,
+      text: '10 de maio de 1990, Maria Silva',
+      context: started.context!,
+    });
+
+    expect(verified.context?.step).toBe('CONFIRM');
+    expect(verified.reply).toContain('SIM');
+  });
+
   it('does not reschedule when the identity does not match', async () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });

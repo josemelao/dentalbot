@@ -272,7 +272,7 @@ describe('inbound end-to-end', () => {
 
     const text = fakeChannel.sent.at(-1)?.text ?? '';
     expect(text.toLowerCase()).not.toContain('grátis');
-    expect(text).toContain('confirmar essa informação com a equipe');
+    expect(text).toContain('contar um pouco mais');
     await app.close();
   });
 

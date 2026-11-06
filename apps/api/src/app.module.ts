@@ -4,8 +4,11 @@ import { AiGateway } from './ai/ai-gateway';
 import { DEFAULT_AI_RULES } from './ai/default-rules';
 import { FakeAiGateway } from './ai/fake-ai.gateway';
 import { DeterministicFirstGateway } from './ai/deterministic-first.gateway';
-import { OpenAiIntentGateway } from './ai/openai-intent.gateway';
-import { AI_GATEWAY } from './ai/tokens';
+import { GeminiClient } from './ai/gemini.client';
+import { LlmIntentGateway } from './ai/llm-intent.gateway';
+import { OpenAiClient } from './ai/openai.client';
+import { UnknownRouter } from './ai/unknown-router';
+import { AI_GATEWAY, UNKNOWN_ROUTER } from './ai/tokens';
 import { ChannelAdapter } from './channels/channel-adapter';
 import { FakeChannelAdapter } from './channels/fake/fake-channel.adapter';
 import { OwnerNotifier, ChannelOwnerNotifier, NoopOwnerNotifier } from './channels/owner-notifier';
@@ -16,6 +19,7 @@ import { CalendarAdapter } from './calendar/calendar-adapter';
 import { FakeCalendarAdapter } from './calendar/fake-calendar.adapter';
 import { CALENDAR_ADAPTER } from './calendar/tokens';
 import { AppEnv } from './config/env';
+import { configureMessageStyle } from './common/message-style';
 import { createPool } from './db/pool';
 import { AiInvocationsRepository } from './db/repositories/ai-invocations.repository';
 import { AppointmentsRepository } from './db/repositories/appointments.repository';
@@ -57,10 +61,19 @@ export interface AppModuleOptions {
 @Module({})
 export class AppModule {
   static register(options: AppModuleOptions): DynamicModule {
+    configureMessageStyle({ emoji: options.env.messageEmoji });
+
+    const llmClient =
+      options.env.aiProvider === 'gemini' && options.env.geminiApiKey
+        ? new GeminiClient(options.env.geminiApiKey, options.env.geminiModel)
+        : options.env.aiProvider === 'openai' && options.env.openaiApiKey
+          ? new OpenAiClient(options.env.openaiApiKey, options.env.openaiModel)
+          : null;
+
     const aiGateway =
       options.aiGateway ??
-      (options.env.aiProvider === 'openai' && options.env.openaiApiKey
-        ? new DeterministicFirstGateway(new OpenAiIntentGateway(options.env.openaiApiKey))
+      (llmClient
+        ? new DeterministicFirstGateway(new LlmIntentGateway(llmClient))
         : new FakeAiGateway(DEFAULT_AI_RULES));
     const channelAdapter =
       options.channelAdapter ??
@@ -318,6 +331,19 @@ export class AppModule {
           ],
         },
         {
+          provide: UNKNOWN_ROUTER,
+          useFactory: (knowledge: KnowledgeRepository) =>
+            llmClient
+              ? new UnknownRouter({
+                  client: llmClient,
+                  knowledge,
+                  confidenceThreshold: options.env.routerConfidenceThreshold,
+                  now: () => new Date(),
+                })
+              : null,
+          inject: [KnowledgeRepository],
+        },
+        {
           provide: InboundService,
           useFactory: (
             identity: IdentityService,
@@ -332,6 +358,7 @@ export class AppModule {
             composer: ResponseComposer,
             schedulingFlow: SchedulingFlowService,
             channel: ChannelAdapter,
+            router: UnknownRouter | null,
           ) =>
             new InboundService({
               identity,
@@ -346,6 +373,7 @@ export class AppModule {
               composer,
               schedulingFlow,
               channel,
+              router,
               slaMinutes: options.env.slaMinutes,
             }),
           inject: [
@@ -361,6 +389,7 @@ export class AppModule {
             ResponseComposer,
             SchedulingFlowService,
             CHANNEL_ADAPTER,
+            UNKNOWN_ROUTER,
           ],
         },
       ],

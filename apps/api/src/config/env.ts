@@ -20,9 +20,20 @@ const EnvSchema = z
     TELEGRAM_BOT_TOKEN: optionalString(z.string().min(1)),
     TELEGRAM_WEBHOOK_SECRET: optionalString(z.string().min(1)),
     TELEGRAM_API_BASE_URL: z.string().url().default('https://api.telegram.org'),
-    AI_PROVIDER: z.enum(['fake', 'openai']).default('fake'),
+    AI_PROVIDER: z.enum(['fake', 'openai', 'gemini']).default('fake'),
     CHANNEL_TRANSPORT: z.enum(['telegram', 'fake']).default('telegram'),
     OPENAI_API_KEY: optionalString(z.string().min(1)),
+    OPENAI_MODEL: z.string().default('gpt-4o-mini'),
+    GEMINI_API_KEY: optionalString(z.string().min(1)),
+    GEMINI_MODEL: z.string().default('gemini-2.5-flash'),
+    ROUTER_CONFIDENCE_THRESHOLD: z.coerce.number().min(0).max(1).default(0.6),
+    MESSAGE_EMOJI: z
+      .enum(['true', 'false'])
+      .default('true')
+      .transform((value) => value === 'true'),
+    TYPING_MIN_MS: z.coerce.number().int().min(0).default(400),
+    TYPING_PER_CHAR_MS: z.coerce.number().int().min(0).default(25),
+    TYPING_MAX_MS: z.coerce.number().int().min(0).default(2500),
     LOG_LEVEL: z.string().default('info'),
     SLA_MINUTES: z.coerce.number().int().positive().default(15),
     WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
@@ -44,6 +55,13 @@ const EnvSchema = z
         message: 'OPENAI_API_KEY is required when AI_PROVIDER=openai',
       });
     }
+    if (env.AI_PROVIDER === 'gemini' && !env.GEMINI_API_KEY) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['GEMINI_API_KEY'],
+        message: 'GEMINI_API_KEY is required when AI_PROVIDER=gemini',
+      });
+    }
   });
 
 export interface AppEnv {
@@ -54,9 +72,17 @@ export interface AppEnv {
   telegramBotToken: string | null;
   telegramWebhookSecret: string;
   telegramApiBaseUrl: string;
-  aiProvider: 'fake' | 'openai';
+  aiProvider: 'fake' | 'openai' | 'gemini';
   channelTransport: 'telegram' | 'fake';
   openaiApiKey: string | null;
+  openaiModel: string;
+  geminiApiKey: string | null;
+  geminiModel: string;
+  routerConfidenceThreshold: number;
+  messageEmoji: boolean;
+  typingMinMs: number;
+  typingPerCharMs: number;
+  typingMaxMs: number;
   logLevel: string;
   slaMinutes: number;
   workerIntervalMs: number;
@@ -85,6 +111,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     aiProvider: env.AI_PROVIDER,
     channelTransport: env.CHANNEL_TRANSPORT,
     openaiApiKey: env.OPENAI_API_KEY ?? null,
+    openaiModel: env.OPENAI_MODEL,
+    geminiApiKey: env.GEMINI_API_KEY ?? null,
+    geminiModel: env.GEMINI_MODEL,
+    routerConfidenceThreshold: env.ROUTER_CONFIDENCE_THRESHOLD,
+    messageEmoji: env.MESSAGE_EMOJI,
+    typingMinMs: env.TYPING_MIN_MS,
+    typingPerCharMs: env.TYPING_PER_CHAR_MS,
+    typingMaxMs: env.TYPING_MAX_MS,
     logLevel: env.LOG_LEVEL,
     slaMinutes: env.SLA_MINUTES,
     workerIntervalMs: env.WORKER_INTERVAL_MS,

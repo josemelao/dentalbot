@@ -11,6 +11,7 @@ export const INTENTS = [
   'CLINICAL_QUESTION',
   'EMERGENCY',
   'HUMAN_REQUEST',
+  'SMALL_TALK',
   'UNKNOWN',
 ] as const;
 

@@ -93,14 +93,14 @@ describe('reminder replies', () => {
 
     await post(app, clinic.channelExternalId, update(3, 'sim'));
 
-    expect(fakeChannel.sent.at(-1)?.text).toContain('Recebi sua mensagem');
+    expect(fakeChannel.sent.at(-1)?.text).toContain('contar um pouco mais');
     expect(fakeChannel.sent.at(-1)?.text).not.toContain('Presença confirmada');
 
     const tickets = await pool.query(
       `select count(*)::int as n from human_tickets where tenant_id = $1`,
       [clinic.tenantId],
     );
-    expect(tickets.rows[0].n).toBe(1);
+    expect(tickets.rows[0].n).toBe(0);
 
     await app.close();
   });

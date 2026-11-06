@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { DateTime } from 'luxon';
 import { z } from 'zod';
 import { normalizeText } from '../common/text';
 import { AppointmentsRepository } from '../db/repositories/appointments.repository';
@@ -70,6 +71,40 @@ export interface ReplyFlowInput {
   text: string;
   context: SchedulingContext;
 }
+
+const MONTHS: Record<string, number> = {
+  janeiro: 1,
+  fevereiro: 2,
+  marco: 3,
+  abril: 4,
+  maio: 5,
+  junho: 6,
+  julho: 7,
+  agosto: 8,
+  setembro: 9,
+  outubro: 10,
+  novembro: 11,
+  dezembro: 12,
+};
+
+const WEEKDAYS = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+
+const ORDINALS: Record<string, number> = {
+  primeiro: 0,
+  primeira: 0,
+  segundo: 1,
+  segunda: 1,
+  terceiro: 2,
+  terceira: 2,
+  quarto: 3,
+  quarta: 3,
+  quinto: 4,
+  quinta: 4,
+  ultimo: -1,
+  ultima: -1,
+};
+
+const pad2 = (value: string | number): string => String(value).padStart(2, '0');
 
 export class SchedulingFlowService {
   constructor(private readonly deps: SchedulingFlowDependencies) {}
@@ -196,8 +231,8 @@ export class SchedulingFlowService {
     if (input.context.step === 'SLOT') {
       const offered = input.context.offeredSlots ?? [];
       const timezone = input.context.timezone ?? 'America/Sao_Paulo';
-      const index = Number(input.text.trim()) - 1;
-      if (!Number.isInteger(index) || index < 0 || index >= offered.length) {
+      const index = this.parseSlotChoice(input.text, offered, timezone);
+      if (index === null) {
         return {
           reply: schedulingMessages.askNumber(offered, timezone),
           context: input.context,
@@ -218,10 +253,22 @@ export class SchedulingFlowService {
 
     if (input.context.step === 'CONFIRM') {
       const normalized = normalizeText(input.text);
-      const yes = ['sim', 's', 'confirmo', 'pode', 'isso'].some(
+      const yes = [
+        'sim',
+        's',
+        'confirmo',
+        'confirmado',
+        'pode',
+        'isso',
+        'beleza',
+        'fechado',
+        'ok',
+        'claro',
+        'bora',
+      ].some((word) => normalized === word || normalized.startsWith(`${word} `));
+      const no = ['nao', 'n', 'negativo', 'melhor nao', 'nao quero', 'nao posso'].some(
         (word) => normalized === word || normalized.startsWith(`${word} `),
       );
-      const no = ['nao', 'n'].some((word) => normalized === word);
 
       if (yes) {
         if (input.context.flow === 'CANCEL') return this.confirmCancel(input);
@@ -547,16 +594,113 @@ export class SchedulingFlowService {
   }
 
   private parseIdentity(text: string): { name: string; birthDate: string } | null {
-    const match = text.match(/(\d{2}\/\d{2}\/\d{4}|\d{4}-\d{2}-\d{2})/);
-    if (!match) return null;
+    const cleanName = (raw: string): string | null => {
+      const name = normalizeText(
+        raw
+          .replace(/^(meu nome (é|e)|sou|me chamo)\s+/i, '')
+          .replace(/[,;.]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim(),
+      );
+      return name.length >= 3 ? name : null;
+    };
 
-    const name = text.replace(match[0], '').replace(/[,;]/g, ' ').trim();
-    if (name.length < 3) return null;
+    const iso = text.match(/\b(\d{4})-(\d{2})-(\d{2})\b/);
+    if (iso) {
+      const name = cleanName(text.replace(iso[0], ' '));
+      return name ? { name, birthDate: `${iso[1]}-${iso[2]}-${iso[3]}` } : null;
+    }
 
-    const birthDate = match[0].includes('/')
-      ? match[0].split('/').reverse().join('-')
-      : match[0];
-    return { name, birthDate };
+    const numeric = text.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b/);
+    if (numeric) {
+      const name = cleanName(text.replace(numeric[0], ' '));
+      return name
+        ? { name, birthDate: `${numeric[3]}-${pad2(numeric[2])}-${pad2(numeric[1])}` }
+        : null;
+    }
+
+    const written = text.match(/\b(\d{1,2})\s+de\s+([a-zA-ZçÇ]+)(?:\s+de)?\s+(\d{4})\b/);
+    if (written) {
+      const month = MONTHS[normalizeText(written[2])];
+      if (month) {
+        const name = cleanName(text.replace(written[0], ' '));
+        return name
+          ? { name, birthDate: `${written[3]}-${pad2(month)}-${pad2(written[1])}` }
+          : null;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Accepts what a person actually types: a number, an ordinal, a weekday or a
+   * period of the day. Ambiguity asks again instead of guessing.
+   */
+  private parseSlotChoice(
+    text: string,
+    offered: OfferedSlot[],
+    timezone: string,
+  ): number | null {
+    if (offered.length === 0) return null;
+    const normalized = normalizeText(text);
+
+    const digit = normalized.match(/^(\d{1,2})\b/);
+    if (digit) {
+      const index = Number(digit[1]) - 1;
+      return index >= 0 && index < offered.length ? index : null;
+    }
+
+    const option = normalized.match(/op[cç][aã]o\s*(\d{1,2})/);
+    if (option) {
+      const index = Number(option[1]) - 1;
+      return index >= 0 && index < offered.length ? index : null;
+    }
+
+    const period = normalized.match(/\b(manha|tarde|noite)\b/)?.[1] ?? null;
+    const weekday =
+      normalized.includes('amanha')
+        ? DateTime.fromJSDate(new Date(offered[0].startAt), { zone: timezone })
+            .plus({ days: 1 })
+            .setLocale('pt-BR')
+            .weekdayLong?.toLowerCase() ?? null
+        : WEEKDAYS.find((day) => normalized.includes(day)) ?? null;
+
+    if (period || weekday) {
+      const matches = offered
+        .map((slot, index) => ({ slot, index }))
+        .filter(({ slot }) => this.matchesSlotHint(slot, timezone, { period, weekday }));
+      if (matches.length === 1) return matches[0].index;
+    }
+
+    const ordinal = normalized.match(
+      /\b(primeir[oa]|segund[oa]|terceir[oa]|quart[oa]|quint[oa]|ultim[oa])\b/,
+    )?.[1];
+    if (ordinal) {
+      const base = ORDINALS[ordinal];
+      const index = base === -1 ? offered.length - 1 : base;
+      return index >= 0 && index < offered.length ? index : null;
+    }
+
+    return null;
+  }
+
+  private matchesSlotHint(
+    slot: OfferedSlot,
+    timezone: string,
+    hint: { period: string | null; weekday: string | null },
+  ): boolean {
+    const local = DateTime.fromJSDate(new Date(slot.startAt), { zone: timezone });
+    if (hint.period === 'manha' && local.hour >= 12) return false;
+    if (hint.period === 'tarde' && (local.hour < 12 || local.hour >= 18)) return false;
+    if (hint.period === 'noite' && local.hour < 18) return false;
+
+    if (hint.weekday) {
+      const weekday = normalizeText(local.setLocale('pt-BR').weekdayLong ?? '');
+      if (!weekday.startsWith(hint.weekday)) return false;
+    }
+
+    return true;
   }
 
   private async offerReschedule(

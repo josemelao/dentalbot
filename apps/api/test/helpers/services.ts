@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import { DEFAULT_AI_RULES } from '../../src/ai/default-rules';
 import { FakeAiGateway } from '../../src/ai/fake-ai.gateway';
+import { UnknownRouter } from '../../src/ai/unknown-router';
 import { FakeChannelAdapter } from '../../src/channels/fake/fake-channel.adapter';
 import { RecordingOwnerNotifier } from '../../src/channels/owner-notifier';
 import { AuditRepository } from '../../src/db/repositories/audit.repository';
@@ -27,7 +28,10 @@ import { InboundService } from '../../src/pipeline/inbound.service';
 import { IntentService } from '../../src/pipeline/intent.service';
 import { SafetyService } from '../../src/pipeline/safety.service';
 
-export function buildInboundService(pool: Pool): InboundService {
+export function buildInboundService(
+  pool: Pool,
+  options: { router?: UnknownRouter | null } = {},
+): InboundService {
   const channels = new ChannelsRepository(pool);
   const patients = new PatientsRepository(pool);
   const conversations = new ConversationsRepository(pool);
@@ -93,6 +97,7 @@ export function buildInboundService(pool: Pool): InboundService {
     escalation,
     composer,
     schedulingFlow,
+    router: options.router ?? null,
     channel,
     slaMinutes: 15,
   });

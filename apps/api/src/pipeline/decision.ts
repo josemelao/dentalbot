@@ -6,6 +6,7 @@ export type Decision =
   | { kind: 'EMERGENCY_PROTOCOL'; rule: string }
   | { kind: 'HOLDING_ESCALATED'; ticket: HumanTicket }
   | { kind: 'CLARIFY'; reason: string }
+  | { kind: 'SMALL_TALK' }
   | { kind: 'UNSUPPORTED_MEDIA' }
   | { kind: 'HUMAN_ACTIVE_SILENT' }
   | { kind: 'GREETING' }

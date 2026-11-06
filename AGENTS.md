@@ -119,3 +119,13 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   `NO_SHOW / (ATTENDED + NO_SHOW)`.
 - Silence is not attendance: an unclosed appointment stays `PENDING` and must
   show up in the day list.
+
+## Conversation style invariants
+
+- Wording may vary; **facts may not**. FAQ answers stay verbatim from the approved
+  entry, and the emergency protocol is a single fixed string that never varies.
+- The unknown router returns a **route**, never a patient-facing sentence. An FAQ
+  route must point at an approved, in-force entry of that tenant, validated in
+  code. Low confidence means `HUMAN`.
+- One ambiguous message earns one clarifying question, not a ticket.
+- Variation is per message; tests pin the first variant so assertions stay stable.

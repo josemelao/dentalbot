@@ -1,4 +1,8 @@
 import { getTestPool } from './helpers/db';
+import { setMessageRandom } from '../src/common/message-style';
+
+// Deterministic wording in tests: always the first variant.
+setMessageRandom(() => 0);
 
 beforeEach(async () => {
   const pool = getTestPool();
