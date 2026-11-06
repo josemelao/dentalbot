@@ -7,6 +7,10 @@ export const DEFAULT_AI_RULES: FakeAiRule[] = [
   { when: /hor[aá]rio|funcionamento|que horas abre/i, intent: 'FAQ_ADMIN' },
   { when: /endere[cç]o|onde fica/i, intent: 'FAQ_ADMIN' },
   { when: /conv[eê]nio/i, intent: 'FAQ_ADMIN' },
+  {
+    when: /\b(quais|meus|minhas)\b[^.!?]{0,30}\b(atendimentos?|agendamentos?|consultas?|marcad[oa]s?)\b|\btenho\b[^.!?]{0,20}\b(consulta|agendamento|atendimento)s?\b/i,
+    intent: 'LIST_APPOINTMENTS',
+  },
   { when: /remarcar|reagendar/i, intent: 'RESCHEDULE_REQUEST' },
   { when: /cancelar/i, intent: 'CANCEL_REQUEST' },
   { when: /agendar|marcar/i, intent: 'SCHEDULE_REQUEST' },

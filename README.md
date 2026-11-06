@@ -124,12 +124,28 @@ name and birth date. The automated E2E test seeds it.
 Telegram sends `/start` on the first tap. It is treated as a greeting, so it does
 not open a ticket.
 
-Once a human ticket is open the conversation is `HUMAN_ACTIVE` and the bot stays
-silent on purpose. A clinical or emergency signal still upgrades the open ticket
-(`reclassified` event) so the clinic record is not lost.
+An open ticket is a **queued task, not a takeover**. The bot keeps answering
+safe administrative intents (FAQ, scheduling, reschedule, cancel, list) while
+nobody accepted the ticket. Only an explicit acceptance turns the conversation
+into `HUMAN_ACTIVE` and silences the bot. Emergency still sends the protocol, and
+a clinical signal upgrades the open ticket (`reclassified` event) so the clinic
+record is not lost.
 
-Two destructive CLIs exist only for repeatable demos. Both refuse to run with
-`NODE_ENV=production`.
+The SLA guarantee: if nobody accepts by `sla_due_at`, the bot sends the patient a
+safe next step instead of silence. `npm run sla:sweep` is the job body; schedule
+it with any cron runner (Phase 3 wires it into a worker).
+
+```powershell
+# A human takes over (bot goes quiet) / closes the ticket (bot resumes)
+npm run ticket -- accept <externalUserId> [userId]
+npm run ticket -- resolve <externalUserId>
+
+# Sends the SLA fallback for overdue, unaccepted tickets
+npm run sla:sweep
+```
+
+Two destructive demo CLIs exist only for repeatable demos. Both refuse to run
+with `NODE_ENV=production`.
 
 ```powershell
 # Back to a fresh conversation: cancels open tickets, clears scheduling context

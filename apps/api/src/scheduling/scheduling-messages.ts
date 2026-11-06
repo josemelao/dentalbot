@@ -65,6 +65,17 @@ export const schedulingMessages = {
   noAppointment: (): string =>
     'Não encontrei um agendamento futuro para este contato. Vou pedir para a equipe te ajudar.',
 
+  noUpcomingAppointments: (): string =>
+    'Não encontrei atendimentos futuros para você. Se quiser marcar, é só dizer "quero agendar".',
+
+  listAppointments: (
+    items: Array<{ serviceName: string; startAt: string }>,
+    timezone: string,
+  ): string =>
+    `Seus próximos atendimentos:\n${items
+      .map((item, index) => `${index + 1}) ${item.serviceName} — ${formatSlot(item.startAt, timezone)}`)
+      .join('\n')}`,
+
   multipleAppointments: (): string =>
     'Encontrei mais de um agendamento futuro. Vou pedir para a equipe te ajudar a escolher qual remarcar ou cancelar.',
 

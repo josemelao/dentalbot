@@ -23,7 +23,8 @@ export interface AddTicketEventInput {
 
 const TICKET_COLUMNS = `id, tenant_id as "tenantId", conversation_id as "conversationId",
   patient_contact_id as "patientContactId", status, reason, summary, question,
-  options, answer, sla_due_at as "slaDueAt"`;
+  options, answer, sla_due_at as "slaDueAt", accepted_at as "acceptedAt",
+  accepted_by as "acceptedBy"`;
 
 export class TicketsRepository {
   constructor(private readonly db: Queryable) {}
@@ -117,5 +118,70 @@ export class TicketsRepository {
        where tenant_id = $1 and id = $2`,
       [tenantId, ticketId, reason, summary, slaDueAt],
     );
+  }
+
+  /** Explicit human takeover. From here on the bot must stay silent. */
+  async accept(tenantId: string, ticketId: string, userId: string | null): Promise<void> {
+    await this.db.query(
+      `update human_tickets
+       set accepted_at = now(), accepted_by = $3, updated_at = now()
+       where tenant_id = $1 and id = $2 and accepted_at is null`,
+      [tenantId, ticketId, userId],
+    );
+  }
+
+  async resolve(tenantId: string, ticketId: string): Promise<void> {
+    await this.db.query(
+      `update human_tickets set status = 'resolved', updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, ticketId],
+    );
+  }
+
+  /** Overdue, still-unaccepted tickets that have not received a fallback yet. */
+  async listOverdue(tenantId: string, now: Date): Promise<HumanTicket[]> {
+    const { rows } = await this.db.query(
+      `select ${TICKET_COLUMNS}
+       from human_tickets
+       where tenant_id = $1
+         and status in ('open', 'notified')
+         and accepted_at is null
+         and sla_due_at <= $2
+         and not exists (
+           select 1 from ticket_events e
+           where e.tenant_id = human_tickets.tenant_id
+             and e.ticket_id = human_tickets.id
+             and e.event = 'fallback'
+             and e.created_at >= human_tickets.sla_due_at
+         )
+       order by sla_due_at`,
+      [tenantId, now],
+    );
+    return rows as HumanTicket[];
+  }
+
+  async findById(tenantId: string, ticketId: string): Promise<HumanTicket | null> {
+    const { rows } = await this.db.query(
+      `select ${TICKET_COLUMNS} from human_tickets where tenant_id = $1 and id = $2`,
+      [tenantId, ticketId],
+    );
+    return (rows[0] as HumanTicket | undefined) ?? null;
+  }
+
+  /** The open ticket of a contact's current conversation, if any. */
+  async findOpenByContact(tenantId: string, contactId: string): Promise<HumanTicket | null> {
+    const { rows } = await this.db.query(
+      `select ${TICKET_COLUMNS}
+       from human_tickets
+       where tenant_id = $1 and patient_contact_id = $2
+         and status in ('open', 'notified', 'answered')
+         and conversation_id in (
+           select id from conversations where tenant_id = $1 and state <> 'CLOSED'
+         )
+       order by created_at desc
+       limit 1`,
+      [tenantId, contactId],
+    );
+    return (rows[0] as HumanTicket | undefined) ?? null;
   }
 }

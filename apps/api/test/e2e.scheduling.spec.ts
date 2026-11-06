@@ -136,4 +136,51 @@ describe('scheduling end-to-end', () => {
     expect(cancelled.rows).toEqual([{ status: 'CANCELLED' }]);
     await app.close();
   });
+
+  it('lists upcoming appointments after identity verification', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    await seedScheduling(pool, clinic.tenantId);
+    await linkPatient(pool, clinic);
+    const { app, fakeChannel } = await buildTestApp({ pool });
+
+    await bookThroughWebhook(app, clinic.channelExternalId, 50);
+
+    await post(app, clinic.channelExternalId, update(60, 'quais atendimentos tenho marcado'));
+    expect(fakeChannel.sent.at(-1)?.text.toLowerCase()).toMatch(
+      /nome completo|data de nascimento/,
+    );
+
+    await post(app, clinic.channelExternalId, update(61, 'Maria Silva, 10/05/1990'));
+    const listing = fakeChannel.sent.at(-1)?.text ?? '';
+    expect(listing).toContain('Seus próximos atendimentos');
+    expect(listing).toContain('Limpeza');
+
+    const tickets = await pool.query(
+      `select count(*)::int as n from human_tickets where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(tickets.rows[0].n).toBe(0);
+
+    await app.close();
+  });
+
+  it('says there is nothing upcoming instead of escalating', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    await seedScheduling(pool, clinic.tenantId);
+    const { app, fakeChannel } = await buildTestApp({ pool });
+
+    await post(app, clinic.channelExternalId, update(70, 'quais atendimentos tenho marcado'));
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('Não encontrei atendimentos futuros');
+
+    const tickets = await pool.query(
+      `select count(*)::int as n from human_tickets where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(tickets.rows[0].n).toBe(0);
+
+    await app.close();
+  });
 });

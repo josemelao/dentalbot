@@ -3,6 +3,7 @@ import { Pool } from 'pg';
 import { AiGateway } from './ai/ai-gateway';
 import { DEFAULT_AI_RULES } from './ai/default-rules';
 import { FakeAiGateway } from './ai/fake-ai.gateway';
+import { DeterministicFirstGateway } from './ai/deterministic-first.gateway';
 import { OpenAiIntentGateway } from './ai/openai-intent.gateway';
 import { AI_GATEWAY } from './ai/tokens';
 import { ChannelAdapter } from './channels/channel-adapter';
@@ -58,7 +59,7 @@ export class AppModule {
     const aiGateway =
       options.aiGateway ??
       (options.env.aiProvider === 'openai' && options.env.openaiApiKey
-        ? new OpenAiIntentGateway(options.env.openaiApiKey)
+        ? new DeterministicFirstGateway(new OpenAiIntentGateway(options.env.openaiApiKey))
         : new FakeAiGateway(DEFAULT_AI_RULES));
     const notifier = options.notifier ?? new NoopOwnerNotifier();
     const calendarAdapter =

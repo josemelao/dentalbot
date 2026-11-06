@@ -112,7 +112,7 @@ export interface OfferedSlot {
 }
 
 export interface SchedulingContext {
-  flow: 'SCHEDULE' | 'RESCHEDULE' | 'CANCEL';
+  flow: 'SCHEDULE' | 'RESCHEDULE' | 'CANCEL' | 'LIST';
   step: 'SERVICE' | 'SLOT' | 'CONFIRM' | 'IDENTITY';
   serviceId?: string;
   quantity?: number;

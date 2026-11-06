@@ -17,7 +17,7 @@ const OfferedSlotSchema = z.object({
 });
 
 const SchedulingContextSchema = z.object({
-  flow: z.enum(['SCHEDULE', 'RESCHEDULE', 'CANCEL']),
+  flow: z.enum(['SCHEDULE', 'RESCHEDULE', 'CANCEL', 'LIST']),
   step: z.enum(['SERVICE', 'SLOT', 'CONFIRM', 'IDENTITY']),
   serviceId: z.string().optional(),
   quantity: z.number().optional(),
@@ -59,7 +59,7 @@ export interface StartFlowInput {
   conversationId: string;
   patientContactId: string;
   text: string;
-  intent: 'SCHEDULE_REQUEST' | 'RESCHEDULE_REQUEST' | 'CANCEL_REQUEST';
+  intent: 'SCHEDULE_REQUEST' | 'RESCHEDULE_REQUEST' | 'CANCEL_REQUEST' | 'LIST_APPOINTMENTS';
   context: SchedulingContext | null;
 }
 
@@ -75,6 +75,10 @@ export class SchedulingFlowService {
   constructor(private readonly deps: SchedulingFlowDependencies) {}
 
   async start(input: StartFlowInput): Promise<FlowResult> {
+    if (input.intent === 'LIST_APPOINTMENTS') {
+      return this.startList(input);
+    }
+
     if (input.intent !== 'SCHEDULE_REQUEST') {
       const open = await this.deps.appointments.findByContact(
         input.tenantId,
@@ -396,6 +400,10 @@ export class SchedulingFlowService {
       };
     }
 
+    if (input.context.flow === 'LIST') {
+      return this.listForContact(input.tenantId, input.patientContactId);
+    }
+
     const appointment = input.context.appointmentId
       ? await this.deps.appointments.findById(input.tenantId, input.context.appointmentId)
       : null;
@@ -421,6 +429,82 @@ export class SchedulingFlowService {
     }
 
     return this.offerReschedule(input.tenantId, input.context, appointment);
+  }
+
+  private async startList(input: StartFlowInput): Promise<FlowResult> {
+    const open = await this.deps.appointments.findByContact(
+      input.tenantId,
+      input.patientContactId,
+      this.deps.now(),
+    );
+
+    if (open.length === 0) {
+      return {
+        reply: schedulingMessages.noUpcomingAppointments(),
+        context: null,
+        status: 'COMPLETED',
+      };
+    }
+
+    const patient = await this.deps.patients.findPatientByContact(
+      input.tenantId,
+      input.patientContactId,
+    );
+    if (!patient || !patient.birthDate) {
+      return {
+        reply: schedulingMessages.noPatientRecord(),
+        context: null,
+        status: 'REQUIRES_HUMAN',
+        escalate: {
+          reason: 'UNKNOWN',
+          summary: 'Consulta de agendamentos sem paciente verificável',
+        },
+      };
+    }
+
+    const context = input.context ?? this.newContext('LIST');
+    return {
+      reply: schedulingMessages.askIdentity(),
+      context: { ...context, flow: 'LIST', step: 'IDENTITY' },
+      status: 'PENDING',
+    };
+  }
+
+  private async listForContact(
+    tenantId: string,
+    patientContactId: string,
+  ): Promise<FlowResult> {
+    const open = await this.deps.appointments.findByContact(
+      tenantId,
+      patientContactId,
+      this.deps.now(),
+    );
+
+    if (open.length === 0) {
+      return {
+        reply: schedulingMessages.noUpcomingAppointments(),
+        context: null,
+        status: 'COMPLETED',
+      };
+    }
+
+    const locations = await this.deps.catalog.listActiveLocations(tenantId);
+    const timezone = locations[0]?.timezone ?? 'America/Sao_Paulo';
+
+    const items: Array<{ serviceName: string; startAt: string }> = [];
+    for (const appointment of open) {
+      const service = await this.deps.catalog.findService(tenantId, appointment.serviceId);
+      items.push({
+        serviceName: service?.name ?? 'Consulta',
+        startAt: appointment.startAt.toISOString(),
+      });
+    }
+
+    return {
+      reply: schedulingMessages.listAppointments(items, timezone),
+      context: null,
+      status: 'COMPLETED',
+    };
   }
 
   private parseIdentity(text: string): { name: string; birthDate: string } | null {

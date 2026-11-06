@@ -163,8 +163,8 @@ describe('inbound end-to-end', () => {
     ]);
     await pool.query(
       `insert into human_tickets
-         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
-       values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '15 minutes')`,
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at, accepted_at)
+       values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '15 minutes', now())`,
       [ids.tenantId, ids.conversationId, ids.contactId],
     );
     const { app, fakeChannel } = await buildTestApp({ pool });
@@ -183,8 +183,8 @@ describe('inbound end-to-end', () => {
     ]);
     await pool.query(
       `insert into human_tickets
-         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
-       values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '15 minutes')`,
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at, accepted_at)
+       values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '15 minutes', now())`,
       [ids.tenantId, ids.conversationId, ids.contactId],
     );
     const { app, fakeChannel } = await buildTestApp({ pool });

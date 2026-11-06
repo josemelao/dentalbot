@@ -87,9 +87,21 @@ export class InboundService {
         conversation.id,
       );
 
+      // Self-heal conversations left in HUMAN_ACTIVE before explicit acceptance
+      // existed: without an accepted ticket the human is not actually driving.
+      if (conversation.state === 'HUMAN_ACTIVE' && !openTicket?.acceptedAt) {
+        await this.deps.conversations.updateState(
+          normalized.tenantId,
+          conversation.id,
+          openTicket ? 'REQUIRES_HUMAN' : 'ACTIVE',
+        );
+      }
+
       let decision: Decision;
 
-      if (openTicket) {
+      // An open ticket is a queued task, not a takeover. Only an explicit human
+      // acceptance (`accepted_at`) hands the conversation over and silences the bot.
+      if (openTicket?.acceptedAt) {
         await this.deps.conversations.updateState(
           normalized.tenantId,
           conversation.id,
@@ -380,7 +392,8 @@ export class InboundService {
     if (
       classified.intent === 'SCHEDULE_REQUEST' ||
       classified.intent === 'RESCHEDULE_REQUEST' ||
-      classified.intent === 'CANCEL_REQUEST'
+      classified.intent === 'CANCEL_REQUEST' ||
+      classified.intent === 'LIST_APPOINTMENTS'
     ) {
       const result = await this.deps.schedulingFlow.start({
         tenantId: normalized.tenantId,

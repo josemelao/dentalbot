@@ -57,9 +57,11 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
 
 1. Deduplicate the channel event in `webhook_events`.
 2. Resolve `tenant_id`, contact and conversation.
-3. If a human ticket is open, set `HUMAN_ACTIVE` and do not auto-reply. An
-   emergency still sends the safety protocol, and a clinical signal upgrades the
-   open ticket (`reclassified`) so the record is not lost.
+3. An open ticket is a queued task, not a takeover: keep serving safe
+   administrative intents. Only an explicitly accepted ticket (`accepted_at`)
+   sets `HUMAN_ACTIVE` and silences the bot. An emergency still sends the safety
+   protocol, and a clinical signal upgrades the open ticket (`reclassified`) so
+   the record is not lost.
 4. Run deterministic safety triage. `EMERGENCY` always wins.
 5. If the conversation has an active scheduling context, handle the reply in the
    flow (service, slot, confirmation or identity) without calling the AI.
@@ -76,3 +78,13 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   retried.
 - Joint procedures require every required professional and the chair.
 - Identity (full name + birth date) is required before reschedule/cancel.
+
+## Ticket and SLA invariants
+
+- `open`/`notified` means the ticket is queued. `accepted_at` means a human took
+  over; only then is the conversation `HUMAN_ACTIVE` and the bot silent.
+- Resolving a ticket returns the conversation to `ACTIVE` and the bot resumes.
+- A stronger reason always wins: `EMERGENCY` > `CLINICAL` > `HUMAN_REQUEST` >
+  `UNKNOWN`. A weaker signal never downgrades a ticket.
+- If nobody accepts by `sla_due_at`, the patient receives the SLA fallback. Never
+  leave a patient without a reply or a fallback.

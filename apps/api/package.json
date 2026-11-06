@@ -14,7 +14,9 @@
     "seed:scheduling": "tsx src/cli/seed-scheduling.ts",
     "reconcile": "tsx src/cli/reconcile.ts",
     "demo:reset": "tsx src/cli/demo-reset.ts",
-    "demo:link-patient": "tsx src/cli/demo-link-patient.ts"
+    "demo:link-patient": "tsx src/cli/demo-link-patient.ts",
+    "ticket": "tsx src/cli/ticket.ts",
+    "sla:sweep": "tsx src/cli/sla-sweep.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

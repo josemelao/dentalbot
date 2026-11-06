@@ -99,6 +99,8 @@ export interface HumanTicket {
   options: unknown;
   answer: string | null;
   slaDueAt: Date;
+  acceptedAt: Date | null;
+  acceptedBy: string | null;
 }
 
 export interface Service {

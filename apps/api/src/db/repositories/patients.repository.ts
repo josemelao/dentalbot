@@ -46,6 +46,18 @@ export class PatientsRepository {
     return rows[0] as PatientContact;
   }
 
+  async findContactById(tenantId: string, contactId: string): Promise<PatientContact | null> {
+    const { rows } = await this.db.query(
+      `select id, tenant_id as "tenantId", patient_id as "patientId", channel,
+              external_user_id as "externalUserId", display_name as "displayName",
+              opt_in_status as "optInStatus"
+       from patient_contacts
+       where tenant_id = $1 and id = $2`,
+      [tenantId, contactId],
+    );
+    return (rows[0] as PatientContact | undefined) ?? null;
+  }
+
   async findPatientByContact(
     tenantId: string,
     contactId: string,

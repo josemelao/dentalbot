@@ -47,7 +47,14 @@ export class EscalationService {
       input.tenantId,
       input.conversationId,
     );
-    if (existing) return existing;
+    if (existing) {
+      return this.escalateExisting({
+        tenantId: input.tenantId,
+        ticket: existing,
+        reason: input.reason,
+        summary: input.summary,
+      });
+    }
 
     const slaDueAt = new Date(Date.now() + this.deps.slaMinutes * 60_000);
     const { ticket: createdTicket, created } = await this.deps.tickets.create({
@@ -146,5 +153,66 @@ export class EscalationService {
     });
 
     return { ...current, reason: input.reason, summary: input.summary, slaDueAt };
+  }
+
+  /**
+   * The human took over. This is the only thing that makes the bot go quiet;
+   * an open ticket alone does not.
+   */
+  async accept(input: {
+    tenantId: string;
+    ticket: HumanTicket;
+    userId: string | null;
+  }): Promise<HumanTicket> {
+    if (input.ticket.acceptedAt) return input.ticket;
+
+    await this.deps.tickets.accept(input.tenantId, input.ticket.id, input.userId);
+    await this.deps.tickets.addEvent({
+      tenantId: input.tenantId,
+      ticketId: input.ticket.id,
+      event: 'accepted',
+      actorType: 'human',
+      actorId: input.userId,
+    });
+    await this.deps.conversations.updateState(
+      input.tenantId,
+      input.ticket.conversationId,
+      'HUMAN_ACTIVE',
+    );
+    await this.deps.audit.append({
+      tenantId: input.tenantId,
+      actorType: 'human',
+      actorId: input.userId,
+      action: 'ticket_accepted',
+      entityType: 'human_ticket',
+      entityId: input.ticket.id,
+    });
+
+    return { ...input.ticket, acceptedAt: new Date(), acceptedBy: input.userId };
+  }
+
+  /** Closing the ticket hands the conversation back to the bot. */
+  async resolve(input: { tenantId: string; ticket: HumanTicket }): Promise<HumanTicket> {
+    await this.deps.tickets.resolve(input.tenantId, input.ticket.id);
+    await this.deps.tickets.addEvent({
+      tenantId: input.tenantId,
+      ticketId: input.ticket.id,
+      event: 'resolved',
+      actorType: 'human',
+    });
+    await this.deps.conversations.updateState(
+      input.tenantId,
+      input.ticket.conversationId,
+      'ACTIVE',
+    );
+    await this.deps.audit.append({
+      tenantId: input.tenantId,
+      actorType: 'human',
+      action: 'ticket_resolved',
+      entityType: 'human_ticket',
+      entityId: input.ticket.id,
+    });
+
+    return { ...input.ticket, status: 'resolved' };
   }
 }

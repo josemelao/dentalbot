@@ -54,14 +54,14 @@ describe('InboundService', () => {
     expect(second.data!.conversation.id).toBe(first.data!.conversation.id);
   });
 
-  it('sets HUMAN_ACTIVE when a ticket is open', async () => {
+  it('sets HUMAN_ACTIVE when a human accepted the ticket', async () => {
     const pool = getTestPool();
     const { tenantId, channelExternalId: externalChannelId, conversationId, contactId } =
       await seedClinic(pool, { withConversation: true });
     await pool.query(
       `insert into human_tickets
-         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
-       values ($1, $2, $3, 'CLINICAL', 'dor', 'pode agendar?', now() + interval '15 minutes')`,
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at, accepted_at)
+       values ($1, $2, $3, 'CLINICAL', 'dor', 'pode agendar?', now() + interval '15 minutes', now())`,
       [tenantId, conversationId, contactId],
     );
 
