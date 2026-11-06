@@ -4,6 +4,7 @@ import { FakeChannelAdapter } from '../src/channels/fake/fake-channel.adapter';
 import { AuditRepository } from '../src/db/repositories/audit.repository';
 import { ChannelsRepository } from '../src/db/repositories/channels.repository';
 import { ConversationsRepository } from '../src/db/repositories/conversations.repository';
+import { MessagesRepository } from '../src/db/repositories/messages.repository';
 import { PatientsRepository } from '../src/db/repositories/patients.repository';
 import { TicketsRepository } from '../src/db/repositories/tickets.repository';
 import { EscalationService } from '../src/pipeline/escalation.service';
