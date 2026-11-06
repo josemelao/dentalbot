@@ -2,6 +2,7 @@ import request from 'supertest';
 import { buildTestApp } from './helpers/app';
 import { ClinicUsersRepository } from '../src/db/repositories/clinic-users.repository';
 import { PanelAuthService } from '../src/panel/panel-auth.service';
+import { pickMessage } from '../src/messages/templates';
 import { getTestPool, seedClinic, seedKnowledge, seedScheduling } from './helpers/db';
 
 const get = (app: unknown, path: string) =>
@@ -290,6 +291,51 @@ describe('panel', () => {
 
     const afterRead = await request(server).get('/painel?token=test-panel');
     expect(afterRead.text).not.toContain('nova(s)');
+
+    await app.close();
+  });
+
+  it('edits a bot message template and applies it immediately', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    const response = await request(server)
+      .post('/painel/templates/greeting')
+      .type('form')
+      .send({ token: 'test-panel', variants: 'Oi! Tudo bem?\nOlá, como posso ajudar?' });
+
+    expect(response.status).toBe(303);
+
+    const stored = await pool.query(
+      `select variants from message_templates where tenant_id = $1 and key = 'greeting'`,
+      [clinic.tenantId],
+    );
+    expect(stored.rows[0].variants).toEqual(['Oi! Tudo bem?', 'Olá, como posso ajudar?']);
+    expect(pickMessage('greeting')).toBe('Oi! Tudo bem?');
+
+    await app.close();
+  });
+
+  it('ignores edits to a locked template', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const { app } = await buildTestApp({ pool });
+
+    const response = await request((app as any).getHttpServer())
+      .post('/painel/templates/emergency_protocol')
+      .type('form')
+      .send({ token: 'test-panel', variants: 'Vá ao dentista quando puder.' });
+
+    expect(response.status).toBe(303);
+
+    const stored = await pool.query(
+      `select count(*)::int as n from message_templates where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(stored.rows[0].n).toBe(0);
+    expect(pickMessage('emergency_protocol')).toContain('SAMU');
 
     await app.close();
   });

@@ -31,6 +31,7 @@ import { ConversationsRepository } from './db/repositories/conversations.reposit
 import { KnowledgeRepository } from './db/repositories/knowledge.repository';
 import { LocksRepository } from './db/repositories/locks.repository';
 import { MessagesRepository } from './db/repositories/messages.repository';
+import { MessageTemplatesRepository } from './db/repositories/message-templates.repository';
 import { OperationsRepository } from './db/repositories/operations.repository';
 import { PatientsRepository } from './db/repositories/patients.repository';
 import { RemindersRepository } from './db/repositories/reminders.repository';
@@ -381,6 +382,11 @@ export class AppModule {
           inject: [DB_POOL],
         },
         {
+          provide: MessageTemplatesRepository,
+          useFactory: (pool: Pool) => new MessageTemplatesRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
           provide: PanelAuthService,
           useFactory: (users: ClinicUsersRepository) =>
             new PanelAuthService({
@@ -401,6 +407,7 @@ export class AppModule {
             messages: MessagesRepository,
             conversations: ConversationsRepository,
             patients: PatientsRepository,
+            templates: MessageTemplatesRepository,
           ) =>
             new PanelService({
               pool,
@@ -411,6 +418,7 @@ export class AppModule {
               messages,
               conversations,
               patients,
+              templates,
             }),
           inject: [
             DB_POOL,
@@ -421,6 +429,7 @@ export class AppModule {
             MessagesRepository,
             ConversationsRepository,
             PatientsRepository,
+            MessageTemplatesRepository,
           ],
         },
         {

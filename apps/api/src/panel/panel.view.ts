@@ -112,6 +112,34 @@ const serviceRows = (data: PanelData, token: string): string => {
     .join('');
 };
 
+const templateRows = (data: PanelData, token: string): string =>
+  data.templates
+    .map((template) => {
+      const formId = `tpl-${template.key.replace(/\W/g, '-')}`;
+      const value = escape(template.variants.join('\n'));
+      return `<tr>
+        <td>
+          ${escape(template.label)}
+          <div class="muted">${escape(template.key)}${template.edited ? ' · editado' : ''}</div>
+        </td>
+        <td>
+          <textarea form="${formId}" name="variants" rows="3"${template.locked ? ' disabled' : ''}>${value}</textarea>
+          <div class="muted">${template.locked ? '🔒 travada — não pode ser alterada' : 'uma variante por linha'}</div>
+        </td>
+        <td>
+          ${
+            template.locked
+              ? ''
+              : `<form id="${formId}" method="post" action="/painel/templates/${encodeURIComponent(template.key)}">
+                   <input type="hidden" name="token" value="${escape(token)}">
+                   <button type="submit">salvar</button>
+                 </form>`
+          }
+        </td>
+      </tr>`;
+    })
+    .join('');
+
 const ticketRows = (data: PanelData, token: string): string => {
   if (data.tickets.length === 0) {
     return '<tr><td colspan="4" class="empty">Nenhum ticket aberto.</td></tr>';
@@ -395,6 +423,13 @@ export function renderPanel(data: PanelData, token: string): string {
     <table>
       <thead><tr><th>Serviço</th><th>Duração (min)</th><th>Preço</th><th>Mostrar preço</th><th>Status</th></tr></thead>
       <tbody>${serviceRows(data, token)}</tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Mensagens do bot</h2>
+    <table>
+      <thead><tr><th>Mensagem</th><th>Variantes ({{placeholders}} preenchidos pelo sistema)</th><th></th></tr></thead>
+      <tbody>${templateRows(data, token)}</tbody>
     </table>
   </section>
 </main>

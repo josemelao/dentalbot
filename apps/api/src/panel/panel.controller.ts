@@ -16,8 +16,10 @@ import {
 import { AppEnv } from '../config/env';
 import { CatalogRepository } from '../db/repositories/catalog.repository';
 import { KnowledgeRepository } from '../db/repositories/knowledge.repository';
+import { MessageTemplatesRepository } from '../db/repositories/message-templates.repository';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { ENV } from '../db/tokens';
+import { isLocked, setTemplateOverride } from '../messages/templates';
 import { EscalationService } from '../pipeline/escalation.service';
 import { ReminderService } from '../scheduling/reminder.service';
 import { PanelAuthService, PanelSession } from './panel-auth.service';
@@ -49,6 +51,7 @@ export class PanelController {
     private readonly tickets: TicketsRepository,
     private readonly escalation: EscalationService,
     private readonly reminders: ReminderService,
+    private readonly templates: MessageTemplatesRepository,
   ) {}
 
   @Get('login')
@@ -229,6 +232,31 @@ export class PanelController {
         keywords: keywords(body.keywords),
         status: body.status === 'approved' ? 'approved' : 'draft',
       });
+    }
+
+    return this.back(body.token);
+  }
+
+  @Post('templates/:key')
+  @Redirect()
+  async updateTemplate(
+    @Param('key') key: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    if (!isLocked(key)) {
+      const variants = (body.variants ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+
+      if (variants.length > 0) {
+        await this.templates.upsert(clinic.id, key, variants);
+        setTemplateOverride(key, variants);
+      }
     }
 
     return this.back(body.token);

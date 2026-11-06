@@ -1,3 +1,4 @@
+import { pickMessage } from '../messages/templates';
 import { pick, withEmoji } from '../common/message-style';
 import { OfferedSlot } from './types';
 
@@ -25,32 +26,22 @@ const listBlock = (slots: OfferedSlot[], timezone: string): string =>
 
 export const schedulingMessages = {
   askService: (names: string[]): string =>
-    pick([
-      `Qual serviço você precisa? Tenho: ${names.join(', ')}.`,
-      `Claro! Me conta o que você precisa: ${names.join(', ')}.`,
-      `O que você está pensando? Posso ajudar com ${names.join(', ')}.`,
-    ]),
+    pickMessage('schedule.ask_service', { services: names.join(', ') }),
 
   offerSlots: (serviceName: string, slots: OfferedSlot[], timezone: string): string =>
-    pick([
-      `Tenho estes horários para ${serviceName}:\n${listBlock(slots, timezone)}\nResponda com o número.`,
-      `Achei estas opções para ${serviceName}:\n${listBlock(slots, timezone)}\n\nMe diz o número ou o dia que prefere.`,
-      `Consegui estes horários para ${serviceName} ${withEmoji('', '👇')}\n${listBlock(slots, timezone)}\n\nQual fica melhor?`,
-    ]),
+    pickMessage('schedule.offer_slots', {
+      service: serviceName,
+      slots: listBlock(slots, timezone),
+    }),
 
   askNumber: (slots: OfferedSlot[], timezone: string): string =>
-    pick([
-      `Responda com o número de uma das opções:\n${listBlock(slots, timezone)}`,
-      `Não peguei qual você quis. Me diz o número:\n${listBlock(slots, timezone)}`,
-      `Só preciso do número da opção:\n${listBlock(slots, timezone)}`,
-    ]),
+    pickMessage('schedule.ask_number', { slots: listBlock(slots, timezone) }),
 
   confirm: (serviceName: string, slot: OfferedSlot, timezone: string): string =>
-    pick([
-      `Confirma ${serviceName} em ${formatSlot(slot.startAt, timezone)}? Responda SIM ou NÃO.`,
-      `Fechado: ${serviceName} em ${formatSlot(slot.startAt, timezone)}. Posso confirmar? (SIM ou NÃO)`,
-      `Então fica ${serviceName} em ${formatSlot(slot.startAt, timezone)}. Confirma? SIM ou NÃO.`,
-    ]),
+    pickMessage('schedule.confirm', {
+      service: serviceName,
+      when: formatSlot(slot.startAt, timezone),
+    }),
 
   confirmAgain: (): string =>
     pick([
@@ -60,14 +51,10 @@ export const schedulingMessages = {
     ]),
 
   booked: (serviceName: string, slot: OfferedSlot, timezone: string): string =>
-    pick([
-      `Agendado! ${serviceName} em ${formatSlot(slot.startAt, timezone)}. Até lá.`,
-      withEmoji(
-        `Prontinho! ${serviceName} em ${formatSlot(slot.startAt, timezone)}. Te espero lá.`,
-        '✅',
-      ),
-      `Tudo certo: ${serviceName} em ${formatSlot(slot.startAt, timezone)}. Até breve!`,
-    ]),
+    pickMessage('schedule.booked', {
+      service: serviceName,
+      when: formatSlot(slot.startAt, timezone),
+    }),
 
   confirmedAppointment: (
     serviceName: string,

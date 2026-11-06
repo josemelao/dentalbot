@@ -4,9 +4,11 @@ import { CatalogRepository } from '../db/repositories/catalog.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
 import { KnowledgeRepository } from '../db/repositories/knowledge.repository';
 import { MessagesRepository } from '../db/repositories/messages.repository';
+import { MessageTemplatesRepository } from '../db/repositories/message-templates.repository';
 import { PatientsRepository } from '../db/repositories/patients.repository';
 import { KnowledgeEntry, Message, Service } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
+import { TEMPLATE_DEFINITIONS } from '../messages/templates';
 import { AttendanceService, DayRow } from '../scheduling/attendance.service';
 
 export interface PanelTicket {
@@ -29,6 +31,14 @@ export interface TicketDetail {
   messages: Message[];
 }
 
+export interface PanelTemplate {
+  key: string;
+  label: string;
+  locked: boolean;
+  variants: string[];
+  edited: boolean;
+}
+
 export interface PanelData {
   clinicName: string;
   timezone: string;
@@ -37,6 +47,7 @@ export interface PanelData {
   tickets: PanelTicket[];
   knowledge: KnowledgeEntry[];
   services: Service[];
+  templates: PanelTemplate[];
 }
 
 export interface PanelServiceDependencies {
@@ -48,6 +59,7 @@ export interface PanelServiceDependencies {
   messages: MessagesRepository;
   conversations: ConversationsRepository;
   patients: PatientsRepository;
+  templates: MessageTemplatesRepository;
 }
 
 /** Read-only view model for the pilot panel. No writes live here yet. */
@@ -72,12 +84,22 @@ export class PanelService {
 
     const date = dateISO ?? DateTime.now().setZone(clinic.timezone).toISODate() ?? '';
 
-    const [agenda, tickets, knowledge, services] = await Promise.all([
+    const [agenda, tickets, knowledge, services, templateRows] = await Promise.all([
       this.deps.attendance.listDay(clinic.id, date),
       this.deps.tickets.listOpen(clinic.id),
       this.deps.knowledge.listAll(clinic.id),
       this.deps.catalog.listAllServices(clinic.id),
+      this.deps.templates.listActive(clinic.id),
     ]);
+
+    const overrides = new Map(templateRows.map((row) => [row.key, row.variants]));
+    const templates = TEMPLATE_DEFINITIONS.map((definition) => ({
+      key: definition.key,
+      label: definition.label,
+      locked: definition.locked,
+      variants: overrides.get(definition.key) ?? definition.defaults,
+      edited: overrides.has(definition.key),
+    }));
 
     return {
       clinicName: clinic.name,
@@ -86,6 +108,7 @@ export class PanelService {
       agenda,
       knowledge,
       services,
+      templates,
       tickets: tickets.map((ticket) => ({
         id: ticket.id,
         reason: ticket.reason,

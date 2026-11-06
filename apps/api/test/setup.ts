@@ -1,8 +1,14 @@
 import { getTestPool } from './helpers/db';
 import { setMessageRandom } from '../src/common/message-style';
+import { setTemplateOverrides } from '../src/messages/templates';
 
 // Deterministic wording in tests: always the first variant.
 setMessageRandom(() => 0);
+
+beforeEach(() => {
+  // The template store is process-wide; never leak an edit between tests.
+  setTemplateOverrides([]);
+});
 
 beforeEach(async () => {
   const pool = getTestPool();
