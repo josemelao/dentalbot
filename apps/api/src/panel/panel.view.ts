@@ -43,6 +43,10 @@ const agendaRows = (data: PanelData, token: string): string => {
             <input type="hidden" name="token" value="${escape(token)}">
             <button type="submit" class="ghost">pedir confirmação</button>
           </form>
+          <form method="post" action="/painel/agendamentos/${row.id}/propor">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit" class="ghost">propor remarcação</button>
+          </form>
         </td>
       </tr>`;
     })

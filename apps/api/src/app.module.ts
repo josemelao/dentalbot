@@ -35,6 +35,7 @@ import { MessageTemplatesRepository } from './db/repositories/message-templates.
 import { OperationsRepository } from './db/repositories/operations.repository';
 import { PatientsRepository } from './db/repositories/patients.repository';
 import { RemindersRepository } from './db/repositories/reminders.repository';
+import { RescheduleProposalRepository } from './db/repositories/reschedule-proposals.repository';
 import { TicketsRepository } from './db/repositories/tickets.repository';
 import { WebhookEventsRepository } from './db/repositories/webhook-events.repository';
 import { DB_POOL, ENV } from './db/tokens';
@@ -48,6 +49,7 @@ import { BookingService } from './scheduling/booking.service';
 import { SchedulingFlowService } from './scheduling/scheduling-flow.service';
 import { SlotEngine } from './scheduling/slot-engine';
 import { ReminderService } from './scheduling/reminder.service';
+import { RescheduleProposalService } from './scheduling/reschedule-proposal.service';
 import { ResponseComposer } from './pipeline/composer.service';
 import { EscalationService } from './pipeline/escalation.service';
 import { OwnerCommandService } from './pipeline/owner-command.service';
@@ -480,6 +482,50 @@ export class AppModule {
           inject: [KnowledgeRepository],
         },
         {
+          provide: RescheduleProposalRepository,
+          useFactory: (pool: Pool) => new RescheduleProposalRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: RescheduleProposalService,
+          useFactory: (
+            proposals: RescheduleProposalRepository,
+            appointments: AppointmentsRepository,
+            catalog: CatalogRepository,
+            availability: AvailabilityService,
+            booking: BookingService,
+            patients: PatientsRepository,
+            messages: MessagesRepository,
+            conversations: ConversationsRepository,
+            channel: ChannelAdapter,
+          ) =>
+            new RescheduleProposalService({
+              proposals,
+              appointments,
+              catalog,
+              availability,
+              booking,
+              patients,
+              messages,
+              conversations,
+              channel,
+              now: () => new Date(),
+              ttlHours: options.env.proposalTtlHours,
+              horizonDays: 30,
+            }),
+          inject: [
+            RescheduleProposalRepository,
+            AppointmentsRepository,
+            CatalogRepository,
+            AvailabilityService,
+            BookingService,
+            PatientsRepository,
+            MessagesRepository,
+            ConversationsRepository,
+            CHANNEL_ADAPTER,
+          ],
+        },
+        {
           provide: InboundService,
           useFactory: (
             identity: IdentityService,
@@ -493,6 +539,7 @@ export class AppModule {
             escalation: EscalationService,
             composer: ResponseComposer,
             schedulingFlow: SchedulingFlowService,
+            rescheduleProposal: RescheduleProposalService,
             channel: ChannelAdapter,
             router: UnknownRouter | null,
           ) =>
@@ -508,6 +555,7 @@ export class AppModule {
               escalation,
               composer,
               schedulingFlow,
+              rescheduleProposal,
               channel,
               router,
               slaMinutes: options.env.slaMinutes,
@@ -524,6 +572,7 @@ export class AppModule {
             EscalationService,
             ResponseComposer,
             SchedulingFlowService,
+            RescheduleProposalService,
             CHANNEL_ADAPTER,
             UNKNOWN_ROUTER,
           ],

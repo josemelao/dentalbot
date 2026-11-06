@@ -19,6 +19,8 @@ import { FakeCalendarAdapter } from '../../src/calendar/fake-calendar.adapter';
 import { AvailabilityService } from '../../src/scheduling/availability.service';
 import { SlotEngine } from '../../src/scheduling/slot-engine';
 import { BookingService } from '../../src/scheduling/booking.service';
+import { RescheduleProposalService } from '../../src/scheduling/reschedule-proposal.service';
+import { RescheduleProposalRepository } from '../../src/db/repositories/reschedule-proposals.repository';
 import { SchedulingFlowService } from '../../src/scheduling/scheduling-flow.service';
 import { ResponseComposer } from '../../src/pipeline/composer.service';
 import { EscalationService } from '../../src/pipeline/escalation.service';
@@ -87,6 +89,21 @@ export function buildInboundService(
     horizonDays: 7,
   });
 
+  const rescheduleProposal = new RescheduleProposalService({
+    proposals: new RescheduleProposalRepository(pool),
+    appointments,
+    catalog,
+    availability,
+    booking,
+    patients,
+    messages,
+    conversations,
+    channel,
+    now: () => new Date(),
+    ttlHours: 24,
+    horizonDays: 30,
+  });
+
   return new InboundService({
     identity,
     conversations,
@@ -99,6 +116,7 @@ export function buildInboundService(
     escalation,
     composer,
     schedulingFlow,
+    rescheduleProposal,
     router: options.router ?? null,
     channel,
     slaMinutes: 15,

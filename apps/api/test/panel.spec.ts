@@ -4,6 +4,7 @@ import { ClinicUsersRepository } from '../src/db/repositories/clinic-users.repos
 import { PanelAuthService } from '../src/panel/panel-auth.service';
 import { pickMessage } from '../src/messages/templates';
 import { getTestPool, seedClinic, seedKnowledge, seedScheduling } from './helpers/db';
+import { buildBookingService, bookingInput } from './helpers/booking';
 
 const get = (app: unknown, path: string) =>
   request((app as { getHttpServer: () => unknown }).getHttpServer() as never).get(path);
@@ -336,6 +337,110 @@ describe('panel', () => {
     );
     expect(stored.rows[0].n).toBe(0);
     expect(pickMessage('emergency_protocol')).toContain('SAMU');
+
+    await app.close();
+  });
+
+  it('proposes a reschedule and applies the patient choice', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const scheduling = await seedScheduling(pool, clinic.tenantId);
+    await pool.query(`update patient_contacts set external_user_id = '42' where id = $1`, [
+      clinic.contactId,
+    ]);
+
+    const booked = await buildBookingService(pool).book(bookingInput(clinic, scheduling));
+    if (booked.status !== 'BOOKED') throw new Error('setup failed');
+
+    const { app, fakeChannel } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    const proposal = await request(server)
+      .post(`/painel/agendamentos/${booked.appointment.id}/propor`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    expect(proposal.status).toBe(303);
+    expect(fakeChannel.sent.at(-1)?.text).toContain('Precisamos remarcar');
+
+    await request(server)
+      .post(`/webhooks/telegram/${clinic.channelExternalId}`)
+      .set('x-telegram-bot-api-secret-token', 'test-secret')
+      .send({
+        update_id: 900,
+        message: {
+          message_id: 900,
+          date: 1730000000,
+          chat: { id: 42 },
+          from: { id: 42 },
+          text: '1',
+        },
+      });
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('Remarcado');
+
+    const rows = await pool.query(
+      `select id, status from appointments where tenant_id = $1 order by created_at`,
+      [clinic.tenantId],
+    );
+    expect(rows.rows[0]).toEqual({ id: booked.appointment.id, status: 'CANCELLED' });
+    expect(rows.rows[1].status).toBe('BOOKED');
+
+    const stored = await pool.query(
+      `select status from reschedule_proposals where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(stored.rows[0].status).toBe('ACCEPTED');
+
+    await app.close();
+  });
+
+  it('keeps the appointment when the patient declines the proposal', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const scheduling = await seedScheduling(pool, clinic.tenantId);
+    await pool.query(`update patient_contacts set external_user_id = '42' where id = $1`, [
+      clinic.contactId,
+    ]);
+
+    const booked = await buildBookingService(pool).book(bookingInput(clinic, scheduling));
+    if (booked.status !== 'BOOKED') throw new Error('setup failed');
+
+    const { app, fakeChannel } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    await request(server)
+      .post(`/painel/agendamentos/${booked.appointment.id}/propor`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    await request(server)
+      .post(`/webhooks/telegram/${clinic.channelExternalId}`)
+      .set('x-telegram-bot-api-secret-token', 'test-secret')
+      .send({
+        update_id: 901,
+        message: {
+          message_id: 901,
+          date: 1730000000,
+          chat: { id: 42 },
+          from: { id: 42 },
+          text: 'não',
+        },
+      });
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('mantive sua consulta');
+
+    const appointment = await pool.query(
+      `select status from appointments where id = $1`,
+      [booked.appointment.id],
+    );
+    expect(appointment.rows[0].status).toBe('BOOKED');
+
+    const stored = await pool.query(
+      `select status from reschedule_proposals where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(stored.rows[0].status).toBe('CANCELLED');
 
     await app.close();
   });

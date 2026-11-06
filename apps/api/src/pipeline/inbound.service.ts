@@ -9,6 +9,7 @@ import { Conversation, Message, PatientContact } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { UnknownRouter } from '../ai/unknown-router';
 import { parseSchedulingContext, SchedulingFlowService } from '../scheduling/scheduling-flow.service';
+import { RescheduleProposalService } from '../scheduling/reschedule-proposal.service';
 import { Decision } from './decision';
 import { EscalationService } from './escalation.service';
 import { FaqService } from './faq.service';
@@ -40,6 +41,7 @@ export interface InboundDependencies {
   escalation: EscalationService;
   composer: ResponseComposer;
   schedulingFlow: SchedulingFlowService;
+  rescheduleProposal: RescheduleProposalService;
   router: UnknownRouter | null;
   channel: ChannelAdapter;
   slaMinutes: number;
@@ -338,6 +340,16 @@ export class InboundService {
         // The safety reply must go out even if the ticket cannot be persisted.
       }
       return { kind: 'EMERGENCY_PROTOCOL', rule: triage.matchedRule ?? 'deterministic_emergency' };
+    }
+
+    // A clinic-started reschedule proposal owns the next reply.
+    const proposalReply = await this.deps.rescheduleProposal.handleReply({
+      tenantId: normalized.tenantId,
+      conversationId: conversation.id,
+      text,
+    });
+    if (proposalReply) {
+      return { kind: 'FLOW_REPLY', result: proposalReply };
     }
 
     const activeContext = parseSchedulingContext(conversation.context);

@@ -22,6 +22,7 @@ import { ENV } from '../db/tokens';
 import { isLocked, setTemplateOverride } from '../messages/templates';
 import { EscalationService } from '../pipeline/escalation.service';
 import { ReminderService } from '../scheduling/reminder.service';
+import { RescheduleProposalService } from '../scheduling/reschedule-proposal.service';
 import { PanelAuthService, PanelSession } from './panel-auth.service';
 import { PanelService } from './panel.service';
 import { renderLogin, renderPanel, renderTicket } from './panel.view';
@@ -51,6 +52,7 @@ export class PanelController {
     private readonly tickets: TicketsRepository,
     private readonly escalation: EscalationService,
     private readonly reminders: ReminderService,
+    private readonly proposals: RescheduleProposalService,
     private readonly templates: MessageTemplatesRepository,
   ) {}
 
@@ -192,6 +194,25 @@ export class PanelController {
     const clinic = await this.requireClinic();
 
     await this.reminders.sendNow(clinic.id, id);
+    return this.back(body.token);
+  }
+
+  @Post('agendamentos/:id/propor')
+  @Redirect()
+  async proposeReschedule(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    const session = this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    await this.proposals.propose({
+      tenantId: clinic.id,
+      appointmentId: id,
+      userId: session?.userId ?? null,
+    });
+
     return this.back(body.token);
   }
 

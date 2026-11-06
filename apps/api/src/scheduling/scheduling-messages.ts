@@ -2,7 +2,7 @@ import { pickMessage } from '../messages/templates';
 import { pick, withEmoji } from '../common/message-style';
 import { OfferedSlot } from './types';
 
-const formatSlot = (iso: string, timezone: string): string =>
+export const formatSlot = (iso: string, timezone: string): string =>
   new Intl.DateTimeFormat('pt-BR', {
     timeZone: timezone,
     weekday: 'short',
@@ -16,7 +16,7 @@ const formatSlot = (iso: string, timezone: string): string =>
     .replace(/,\s*/g, ' ')
     .replace(/(\d{2}:\d{2})$/, 'às $1');
 
-const numbered = (slots: OfferedSlot[], timezone: string): string =>
+export const numbered = (slots: OfferedSlot[], timezone: string): string =>
   slots
     .map((slot, index) => `${index + 1}) ${formatSlot(slot.startAt, timezone)}`)
     .join('\n');
