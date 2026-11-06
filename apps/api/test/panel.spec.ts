@@ -549,6 +549,40 @@ describe('panel', () => {
     await app.close();
   });
 
+  it('closes attendance from the panel', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const scheduling = await seedScheduling(pool, clinic.tenantId);
+    const { rows } = await pool.query(
+      `insert into appointments
+         (tenant_id, patient_contact_id, service_id, location_id, start_at, end_at, status)
+       values ($1, $2, $3, $4, now() - interval '2 hours',
+               now() - interval '1 hour 20 minutes', 'BOOKED')
+       returning id`,
+      [clinic.tenantId, clinic.contactId, scheduling.cleaningServiceId, scheduling.locationId],
+    );
+
+    const { app } = await buildTestApp({ pool });
+
+    const response = await request((app as any).getHttpServer())
+      .post(`/painel/agendamentos/${rows[0].id}/presenca`)
+      .type('form')
+      .send({ token: 'test-panel', status: 'ATTENDED' });
+
+    expect(response.status).toBe(303);
+
+    const stored = await pool.query(
+      `select status, attendance_status from appointments where id = $1`,
+      [rows[0].id],
+    );
+    expect(stored.rows[0]).toEqual({
+      status: 'COMPLETED',
+      attendance_status: 'ATTENDED',
+    });
+
+    await app.close();
+  });
+
   it('replies to a ticket from the panel', async () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });

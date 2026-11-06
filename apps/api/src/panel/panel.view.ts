@@ -47,6 +47,20 @@ const agendaRows = (data: PanelData, token: string): string => {
             <input type="hidden" name="token" value="${escape(token)}">
             <button type="submit" class="ghost">propor remarcação</button>
           </form>
+          ${
+            row.startAt.getTime() <= Date.now()
+              ? `<form method="post" action="/painel/agendamentos/${row.id}/presenca" class="inline">
+                   <input type="hidden" name="token" value="${escape(token)}">
+                   <input type="hidden" name="status" value="ATTENDED">
+                   <button type="submit" class="ghost">atendido</button>
+                 </form>
+                 <form method="post" action="/painel/agendamentos/${row.id}/presenca" class="inline">
+                   <input type="hidden" name="token" value="${escape(token)}">
+                   <input type="hidden" name="status" value="NO_SHOW">
+                   <button type="submit" class="ghost">falta</button>
+                 </form>`
+              : ''
+          }
         </td>
       </tr>`;
     })

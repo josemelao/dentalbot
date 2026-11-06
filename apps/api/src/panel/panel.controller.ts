@@ -24,6 +24,7 @@ import { EscalationService } from '../pipeline/escalation.service';
 import { PendingReplyService, ShadowModeService } from '../pipeline/pending-reply.service';
 import { ReminderService } from '../scheduling/reminder.service';
 import { RescheduleProposalService } from '../scheduling/reschedule-proposal.service';
+import { AttendanceService } from '../scheduling/attendance.service';
 import { PanelAuthService, PanelSession } from './panel-auth.service';
 import { PanelService } from './panel.service';
 import { renderLogin, renderPanel, renderTicket } from './panel.view';
@@ -57,6 +58,7 @@ export class PanelController {
     private readonly templates: MessageTemplatesRepository,
     private readonly pendingReplies: PendingReplyService,
     private readonly shadow: ShadowModeService,
+    private readonly attendance: AttendanceService,
   ) {}
 
   @Get('login')
@@ -248,6 +250,22 @@ export class PanelController {
       id,
       userId: session?.userId ?? null,
     });
+
+    return this.back(body.token);
+  }
+
+  @Post('agendamentos/:id/presenca')
+  @Redirect()
+  async markAttendance(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    const mark = body.status === 'NO_SHOW' ? 'NO_SHOW' : 'ATTENDED';
+    await this.attendance.mark(clinic.id, id, mark);
 
     return this.back(body.token);
   }
