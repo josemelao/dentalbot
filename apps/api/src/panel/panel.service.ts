@@ -48,6 +48,20 @@ export interface PanelPendingReply {
   createdAt: Date;
 }
 
+export interface PanelWorkingHour {
+  id: string;
+  professionalName: string;
+  weekday: number;
+  startTime: string;
+  endTime: string;
+}
+
+export interface PanelHoliday {
+  id: string;
+  date: string;
+  name: string;
+}
+
 export interface PanelData {
   clinicName: string;
   timezone: string;
@@ -59,6 +73,10 @@ export interface PanelData {
   templates: PanelTemplate[];
   shadowMode: boolean;
   pendingReplies: PanelPendingReply[];
+  locationId: string;
+  workingHours: PanelWorkingHour[];
+  holidays: PanelHoliday[];
+  professionals: Array<{ id: string; name: string }>;
 }
 
 export interface PanelServiceDependencies {
@@ -97,7 +115,7 @@ export class PanelService {
 
     const date = dateISO ?? DateTime.now().setZone(clinic.timezone).toISODate() ?? '';
 
-    const [agenda, tickets, knowledge, services, templateRows, pending, shadowMode] =
+    const [agenda, tickets, knowledge, services, templateRows, pending, shadowMode, hours, holidays, professionals, locations] =
       await Promise.all([
         this.deps.attendance.listDay(clinic.id, date),
         this.deps.tickets.listOpen(clinic.id),
@@ -106,6 +124,10 @@ export class PanelService {
         this.deps.templates.listActive(clinic.id),
         this.deps.pending.listPending(clinic.id),
         this.deps.shadow.isEnabled(clinic.id),
+        this.deps.catalog.listAllWorkingHours(clinic.id),
+        this.deps.catalog.listAllHolidays(clinic.id),
+        this.deps.catalog.listProfessionals(clinic.id),
+        this.deps.catalog.listActiveLocations(clinic.id),
       ]);
 
     const overrides = new Map(templateRows.map((row) => [row.key, row.variants]));
@@ -126,6 +148,16 @@ export class PanelService {
       services,
       templates,
       shadowMode,
+      locationId: locations[0]?.id ?? '',
+      workingHours: hours.map((row) => ({
+        id: row.id,
+        professionalName: row.professionalName,
+        weekday: row.weekday,
+        startTime: row.startTime,
+        endTime: row.endTime,
+      })),
+      holidays: holidays.map((row) => ({ id: row.id, date: row.date, name: row.name })),
+      professionals,
       pendingReplies: pending.map((row) => ({
         id: row.id,
         content: row.content,

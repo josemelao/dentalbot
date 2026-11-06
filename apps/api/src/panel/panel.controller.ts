@@ -254,6 +254,86 @@ export class PanelController {
     return this.back(body.token);
   }
 
+  @Post('horarios')
+  @Redirect()
+  async addWorkingHour(
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    const weekday = Number(body.weekday);
+    const startTime = body.startTime ?? '';
+    const endTime = body.endTime ?? '';
+    const valid = /^\d{2}:\d{2}$/.test(startTime) && /^\d{2}:\d{2}$/.test(endTime);
+
+    if (body.professionalId && Number.isInteger(weekday) && valid) {
+      const locations = await this.catalog.listActiveLocations(clinic.id);
+      const location = locations[0];
+      if (location) {
+        await this.catalog.upsertWorkingHour(clinic.id, {
+          professionalId: body.professionalId,
+          locationId: location.id,
+          weekday,
+          startTime,
+          endTime,
+        });
+      }
+    }
+
+    return this.back(body.token);
+  }
+
+  @Post('horarios/:id/excluir')
+  @Redirect()
+  async deleteWorkingHour(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+    await this.catalog.deleteWorkingHour(clinic.id, id);
+    return this.back(body.token);
+  }
+
+  @Post('feriados')
+  @Redirect()
+  async addHoliday(
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    const date = body.date ?? '';
+    const name = body.name?.trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date) && name) {
+      const locations = await this.catalog.listActiveLocations(clinic.id);
+      await this.catalog.addHoliday(clinic.id, {
+        locationId: locations[0]?.id ?? null,
+        date,
+        name,
+      });
+    }
+
+    return this.back(body.token);
+  }
+
+  @Post('feriados/:id/excluir')
+  @Redirect()
+  async deleteHoliday(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+    await this.catalog.deleteHoliday(clinic.id, id);
+    return this.back(body.token);
+  }
+
   @Post('agendamentos/:id/presenca')
   @Redirect()
   async markAttendance(

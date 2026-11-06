@@ -583,6 +583,86 @@ describe('panel', () => {
     await app.close();
   });
 
+  it('adds and removes a working hour', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const scheduling = await seedScheduling(pool, clinic.tenantId);
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    const before = await pool.query(
+      `select count(*)::int as n from professional_working_hours where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+
+    await request(server)
+      .post('/painel/horarios')
+      .type('form')
+      .send({
+        token: 'test-panel',
+        professionalId: scheduling.caioId,
+        weekday: '6',
+        startTime: '08:00',
+        endTime: '12:00',
+      });
+
+    const after = await pool.query(
+      `select count(*)::int as n from professional_working_hours where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(after.rows[0].n).toBe(before.rows[0].n + 1);
+
+    const created = await pool.query(
+      `select id from professional_working_hours
+       where tenant_id = $1 and weekday = 6 and start_time = '08:00'`,
+      [clinic.tenantId],
+    );
+
+    await request(server)
+      .post(`/painel/horarios/${created.rows[0].id}/excluir`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    const final = await pool.query(
+      `select count(*)::int as n from professional_working_hours where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(final.rows[0].n).toBe(before.rows[0].n);
+
+    await app.close();
+  });
+
+  it('adds and removes a holiday', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    await request(server)
+      .post('/painel/feriados')
+      .type('form')
+      .send({ token: 'test-panel', date: '2026-12-25', name: 'Natal' });
+
+    const created = await pool.query(
+      `select id from clinic_holidays where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(created.rows).toHaveLength(1);
+
+    await request(server)
+      .post(`/painel/feriados/${created.rows[0].id}/excluir`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    const after = await pool.query(
+      `select count(*)::int as n from clinic_holidays where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(after.rows[0].n).toBe(0);
+
+    await app.close();
+  });
+
   it('replies to a ticket from the panel', async () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });

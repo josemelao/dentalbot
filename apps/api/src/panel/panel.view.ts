@@ -187,6 +187,49 @@ const pendingRows = (data: PanelData, token: string): string => {
     .join('');
 };
 
+const WEEKDAYS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+const hoursRows = (data: PanelData, token: string): string => {
+  if (data.workingHours.length === 0) {
+    return '<tr><td colspan="4" class="empty">Nenhum horário cadastrado.</td></tr>';
+  }
+  return data.workingHours
+    .map(
+      (row) => `<tr>
+        <td>${escape(row.professionalName)}</td>
+        <td>${WEEKDAYS[row.weekday] ?? row.weekday}</td>
+        <td>${escape(row.startTime)} – ${escape(row.endTime)}</td>
+        <td>
+          <form method="post" action="/painel/horarios/${row.id}/excluir">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit" class="ghost">remover</button>
+          </form>
+        </td>
+      </tr>`,
+    )
+    .join('');
+};
+
+const holidayRows = (data: PanelData, token: string): string => {
+  if (data.holidays.length === 0) {
+    return '<tr><td colspan="3" class="empty">Nenhum feriado cadastrado.</td></tr>';
+  }
+  return data.holidays
+    .map(
+      (row) => `<tr>
+        <td>${escape(row.date)}</td>
+        <td>${escape(row.name)}</td>
+        <td>
+          <form method="post" action="/painel/feriados/${row.id}/excluir">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit" class="ghost">remover</button>
+          </form>
+        </td>
+      </tr>`,
+    )
+    .join('');
+};
+
 const ticketRows = (data: PanelData, token: string): string => {
   if (data.tickets.length === 0) {
     return '<tr><td colspan="4" class="empty">Nenhum ticket aberto.</td></tr>';
@@ -420,6 +463,8 @@ export function renderPanel(data: PanelData, token: string): string {
   form.reply input { flex:1; }
   form.inline { display:flex; gap:8px; align-items:center; font-weight:400; }
   form.inline input[type=checkbox] { width:auto; }
+  form.row { display:flex; gap:8px; padding:14px 16px; border-top:1px solid #e5e7eb; flex-wrap:wrap; align-items:center; }
+  form.row input, form.row select { width:auto; }
 </style>
 </head>
 <body>
@@ -489,6 +534,38 @@ export function renderPanel(data: PanelData, token: string): string {
       <thead><tr><th>Serviço</th><th>Duração (min)</th><th>Preço</th><th>Mostrar preço</th><th>Status</th></tr></thead>
       <tbody>${serviceRows(data, token)}</tbody>
     </table>
+  </section>
+  <section>
+    <h2>Horários de atendimento</h2>
+    <table>
+      <thead><tr><th>Profissional</th><th>Dia</th><th>Faixa</th><th></th></tr></thead>
+      <tbody>${hoursRows(data, token)}</tbody>
+    </table>
+    <form class="row" method="post" action="/painel/horarios">
+      <input type="hidden" name="token" value="${escape(token)}">
+      <select name="professionalId">
+        ${data.professionals.map((p) => `<option value="${p.id}">${escape(p.name)}</option>`).join('')}
+      </select>
+      <select name="weekday">
+        ${WEEKDAYS.map((label, index) => `<option value="${index}">${label}</option>`).join('')}
+      </select>
+      <input name="startTime" type="time" value="09:00">
+      <input name="endTime" type="time" value="18:00">
+      <button type="submit">adicionar</button>
+    </form>
+  </section>
+  <section>
+    <h2>Feriados</h2>
+    <table>
+      <thead><tr><th>Data</th><th>Nome</th><th></th></tr></thead>
+      <tbody>${holidayRows(data, token)}</tbody>
+    </table>
+    <form class="row" method="post" action="/painel/feriados">
+      <input type="hidden" name="token" value="${escape(token)}">
+      <input name="date" type="date" required>
+      <input name="name" placeholder="Nome do feriado" required>
+      <button type="submit">adicionar</button>
+    </form>
   </section>
   <section>
     <h2>Mensagens do bot</h2>

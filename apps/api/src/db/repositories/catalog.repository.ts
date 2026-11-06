@@ -144,6 +144,118 @@ export class CatalogRepository {
     return rows as ServiceProfessionalRequirement[];
   }
 
+  async listProfessionals(
+    tenantId: string,
+  ): Promise<Array<{ id: string; name: string }>> {
+    const { rows } = await this.db.query(
+      `select id, name from professionals
+       where tenant_id = $1 and status = 'active' order by name`,
+      [tenantId],
+    );
+    return rows as Array<{ id: string; name: string }>;
+  }
+
+  async listAllWorkingHours(tenantId: string): Promise<
+    Array<{
+      id: string;
+      professionalId: string;
+      professionalName: string;
+      locationId: string;
+      weekday: number;
+      startTime: string;
+      endTime: string;
+    }>
+  > {
+    const { rows } = await this.db.query(
+      `select w.id, w.professional_id as "professionalId", p.name as "professionalName",
+              w.location_id as "locationId", w.weekday,
+              to_char(w.start_time, 'HH24:MI') as "startTime",
+              to_char(w.end_time, 'HH24:MI') as "endTime"
+       from professional_working_hours w
+       join professionals p on p.tenant_id = w.tenant_id and p.id = w.professional_id
+       where w.tenant_id = $1
+       order by p.name, w.weekday, w.start_time`,
+      [tenantId],
+    );
+    return rows as Array<{
+      id: string;
+      professionalId: string;
+      professionalName: string;
+      locationId: string;
+      weekday: number;
+      startTime: string;
+      endTime: string;
+    }>;
+  }
+
+  async upsertWorkingHour(
+    tenantId: string,
+    input: {
+      professionalId: string;
+      locationId: string;
+      weekday: number;
+      startTime: string;
+      endTime: string;
+    },
+  ): Promise<void> {
+    await this.db.query(
+      `insert into professional_working_hours
+         (tenant_id, professional_id, location_id, weekday, start_time, end_time)
+       values ($1, $2, $3, $4, $5::time, $6::time)`,
+      [
+        tenantId,
+        input.professionalId,
+        input.locationId,
+        input.weekday,
+        input.startTime,
+        input.endTime,
+      ],
+    );
+  }
+
+  async deleteWorkingHour(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `delete from professional_working_hours where tenant_id = $1 and id = $2`,
+      [tenantId, id],
+    );
+  }
+
+  async listAllHolidays(
+    tenantId: string,
+  ): Promise<Array<{ id: string; locationId: string | null; date: string; name: string }>> {
+    const { rows } = await this.db.query(
+      `select id, location_id as "locationId", holiday_date::text as "date", name
+       from clinic_holidays
+       where tenant_id = $1
+       order by holiday_date`,
+      [tenantId],
+    );
+    return rows as Array<{
+      id: string;
+      locationId: string | null;
+      date: string;
+      name: string;
+    }>;
+  }
+
+  async addHoliday(
+    tenantId: string,
+    input: { locationId: string | null; date: string; name: string },
+  ): Promise<void> {
+    await this.db.query(
+      `insert into clinic_holidays (tenant_id, location_id, holiday_date, name)
+       values ($1, $2, $3::date, $4)`,
+      [tenantId, input.locationId, input.date, input.name],
+    );
+  }
+
+  async deleteHoliday(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `delete from clinic_holidays where tenant_id = $1 and id = $2`,
+      [tenantId, id],
+    );
+  }
+
   async listWorkingHours(
     tenantId: string,
     professionalIds: string[],
