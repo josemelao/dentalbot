@@ -257,6 +257,39 @@ export function renderTicket(detail: TicketDetail, token: string): string {
 </html>`;
 }
 
+export function renderLogin(error?: string): string {
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrar — painel</title>
+<style>
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center; background:#0f172a;
+         font:15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; color:#0f172a; }
+  form { background:#fff; padding:28px; border-radius:12px; width:340px; display:grid; gap:14px; }
+  h1 { margin:0 0 4px; font-size:18px; }
+  p { margin:0; color:#64748b; font-size:13px; }
+  input { font:inherit; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; width:100%; }
+  button { font:inherit; padding:10px 14px; border-radius:8px; border:1px solid #1d4ed8;
+           background:#1d4ed8; color:#fff; cursor:pointer; }
+  .error { background:#fee2e2; color:#991b1b; padding:8px 12px; border-radius:8px; font-size:13px; }
+</style>
+</head>
+<body>
+<form method="post" action="/painel/login">
+  <h1>Painel da clínica</h1>
+  <p>Entre com seu e-mail e senha.</p>
+  ${error ? '<div class="error">E-mail ou senha inválidos.</div>' : ''}
+  <input name="email" type="email" placeholder="e-mail" required autocomplete="username">
+  <input name="password" type="password" placeholder="senha" required autocomplete="current-password">
+  <button type="submit">entrar</button>
+</form>
+</body>
+</html>`;
+}
+
 export function renderPanel(data: PanelData, token: string): string {
   const previous = shiftDay(data.dateISO, -1, data.timezone);
   const next = shiftDay(data.dateISO, 1, data.timezone);

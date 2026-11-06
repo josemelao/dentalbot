@@ -134,6 +134,9 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
 
 - The panel token is a shared secret, **not** authentication. It must never be
   treated as a login, and the panel must not be exposed publicly without TLS.
+- The real access path is the signed session cookie (e-mail + password). The
+  legacy `PANEL_TOKEN` is a bootstrap accepted only outside production.
+- Every panel action is attributed to the signed-in user in `audit_logs`.
 - Every panel write is tenant-scoped by the active clinic and goes through the
   same repositories as the bot, so audit and validation stay in one place.
 - Editing a FAQ answer changes exactly what the bot says to patients: only

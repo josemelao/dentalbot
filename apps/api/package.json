@@ -20,7 +20,8 @@
     "sla:sweep": "tsx src/cli/sla-sweep.ts",
     "worker": "tsx src/worker/worker.ts",
     "worker:start": "node dist/worker/worker.js",
-    "attendance": "tsx src/cli/attendance.ts"
+    "attendance": "tsx src/cli/attendance.ts",
+    "user:password": "tsx src/cli/user-password.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

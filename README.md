@@ -136,12 +136,23 @@ is unchanged.
 
 ## Pilot panel
 
-A read-only-then-editable panel is served by the API itself, so the clinic has a
-screen today without a second app:
+A panel is served by the API itself, so the clinic has a screen today without a
+second app:
 
 ```
-http://localhost:3000/painel?token=<PANEL_TOKEN>
+http://localhost:3000/painel/login
 ```
+
+Login uses the clinic user's e-mail and password. The session is a signed,
+HttpOnly cookie valid for 8 hours.
+
+```powershell
+# Set or reset a user's panel password
+npm run user:password -- chow@example.com "uma senha forte"
+```
+
+`PANEL_TOKEN` still works as a **non-production bootstrap** (for the local demo),
+never in production. Without `SESSION_SECRET` login is disabled.
 
 It shows the day agenda, the open tickets, the approved FAQ and the service
 prices. FAQ answers and service price/duration/status are editable in place.

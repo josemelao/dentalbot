@@ -1,5 +1,7 @@
 import request from 'supertest';
 import { buildTestApp } from './helpers/app';
+import { ClinicUsersRepository } from '../src/db/repositories/clinic-users.repository';
+import { PanelAuthService } from '../src/panel/panel-auth.service';
 import { getTestPool, seedClinic, seedKnowledge, seedScheduling } from './helpers/db';
 
 const get = (app: unknown, path: string) =>
@@ -153,6 +155,50 @@ describe('panel', () => {
       price: '300.00',
       price_disclosure_allowed: true,
     });
+
+    await app.close();
+  });
+
+  it('logs in with a password and uses the session cookie', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const users = new ClinicUsersRepository(pool);
+    const auth = new PanelAuthService({ users, secret: null, now: () => new Date() });
+    await users.setPasswordHash(clinic.ownerId, auth.hashPassword('senha-forte-1'));
+
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    const login = await request(server)
+      .post('/painel/login')
+      .type('form')
+      .send({ email: `chow-${clinic.suffix}@example.com`, password: 'senha-forte-1' });
+
+    expect(login.status).toBe(303);
+    const cookie = login.headers['set-cookie'];
+    expect(cookie).toBeDefined();
+
+    const page = await request(server).get('/painel').set('Cookie', cookie as unknown as string[]);
+    expect(page.status).toBe(200);
+
+    await app.close();
+  });
+
+  it('rejects a wrong password', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const users = new ClinicUsersRepository(pool);
+    const auth = new PanelAuthService({ users, secret: null, now: () => new Date() });
+    await users.setPasswordHash(clinic.ownerId, auth.hashPassword('senha-forte-1'));
+
+    const { app } = await buildTestApp({ pool });
+    const login = await request((app as any).getHttpServer())
+      .post('/painel/login')
+      .type('form')
+      .send({ email: `chow-${clinic.suffix}@example.com`, password: 'errada' });
+
+    expect(login.status).toBe(303);
+    expect(login.headers.location).toContain('error=1');
 
     await app.close();
   });

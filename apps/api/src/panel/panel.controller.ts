@@ -9,6 +9,8 @@ import {
   Post,
   Query,
   Redirect,
+  Req,
+  Res,
   UnauthorizedException,
 } from '@nestjs/common';
 import { AppEnv } from '../config/env';
@@ -18,8 +20,9 @@ import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { ENV } from '../db/tokens';
 import { EscalationService } from '../pipeline/escalation.service';
 import { ReminderService } from '../scheduling/reminder.service';
+import { PanelAuthService, PanelSession } from './panel-auth.service';
 import { PanelService } from './panel.service';
-import { renderPanel, renderTicket } from './panel.view';
+import { renderLogin, renderPanel, renderTicket } from './panel.view';
 
 const keywords = (raw: string | undefined): string[] =>
   (raw ?? '')
@@ -27,15 +30,20 @@ const keywords = (raw: string | undefined): string[] =>
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 
+const cookieHeader = (req: any): string | undefined => req?.headers?.cookie;
+
 /**
- * Pilot panel. The token is a shared secret, not authentication: it exists to
- * keep the clinic operational until the real inbox with login arrives.
+ * Pilot panel.
+ *
+ * Access is a signed session cookie. The legacy `PANEL_TOKEN` is accepted only
+ * outside production, as a bootstrap for the local demo.
  */
 @Controller('painel')
 export class PanelController {
   constructor(
     @Inject(ENV) private readonly env: AppEnv,
     private readonly panel: PanelService,
+    private readonly auth: PanelAuthService,
     private readonly knowledge: KnowledgeRepository,
     private readonly catalog: CatalogRepository,
     private readonly tickets: TicketsRepository,
@@ -43,21 +51,54 @@ export class PanelController {
     private readonly reminders: ReminderService,
   ) {}
 
+  @Get('login')
+  @Header('content-type', 'text/html; charset=utf-8')
+  loginPage(@Query('error') error?: string): string {
+    return renderLogin(error ? 'invalid' : undefined);
+  }
+
+  @Post('login')
+  async login(
+    @Body() body: Record<string, string | undefined>,
+    @Res() res: any,
+  ): Promise<void> {
+    const session = await this.auth.login(body.email ?? '', body.password ?? '');
+    if (!session) {
+      res.redirect(303, '/painel/login?error=1');
+      return;
+    }
+
+    res.cookie(this.auth.cookieName(), session, {
+      httpOnly: true,
+      sameSite: 'lax',
+      path: '/painel',
+      maxAge: this.auth.cookieMaxAgeSeconds() * 1000,
+    });
+    res.redirect(303, '/painel');
+  }
+
+  @Get('logout')
+  logout(@Res() res: any): void {
+    res.clearCookie(this.auth.cookieName(), { path: '/painel' });
+    res.redirect(303, '/painel/login');
+  }
+
   @Get()
   @Header('content-type', 'text/html; charset=utf-8')
   @Header('cache-control', 'no-store')
   async index(
     @Query('token') token?: string,
     @Query('date') date?: string,
+    @Req() req?: any,
   ): Promise<string> {
-    this.assertToken(token);
+    this.assertAccess(token, cookieHeader(req));
 
     const data = await this.panel.load(date);
     if (!data) {
       throw new NotFoundException('No active clinic');
     }
 
-    return renderPanel(data, this.env.panelToken!);
+    return renderPanel(data, token ?? '');
   }
 
   @Get('tickets/:id')
@@ -66,8 +107,9 @@ export class PanelController {
   async ticket(
     @Param('id') id: string,
     @Query('token') token?: string,
+    @Req() req?: any,
   ): Promise<string> {
-    this.assertToken(token);
+    this.assertAccess(token, cookieHeader(req));
     const clinic = await this.requireClinic();
 
     const detail = await this.panel.openTicket(clinic.id, id);
@@ -75,7 +117,79 @@ export class PanelController {
       throw new NotFoundException('Ticket not found');
     }
 
-    return renderTicket(detail, this.env.panelToken!);
+    return renderTicket(detail, token ?? '');
+  }
+
+  @Post('tickets/:id/assumir')
+  @Redirect()
+  async assumeTicket(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    const session = this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+    const ticket = await this.requireTicket(clinic.id, id);
+
+    await this.escalation.accept({
+      tenantId: clinic.id,
+      ticket,
+      userId: session?.userId ?? null,
+    });
+    return this.back(body.token);
+  }
+
+  @Post('tickets/:id/responder')
+  @Redirect()
+  async replyTicket(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    const session = this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+    const ticket = await this.requireTicket(clinic.id, id);
+
+    const answer = body.answer?.trim();
+    if (answer) {
+      await this.escalation.reply({
+        tenantId: clinic.id,
+        ticket,
+        userId: session?.userId ?? null,
+        text: answer,
+      });
+    }
+
+    return this.back(body.token);
+  }
+
+  @Post('tickets/:id/encerrar')
+  @Redirect()
+  async closeTicket(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+    const ticket = await this.requireTicket(clinic.id, id);
+
+    await this.escalation.resolve({ tenantId: clinic.id, ticket });
+    return this.back(body.token);
+  }
+
+  @Post('agendamentos/:id/confirmar')
+  @Redirect()
+  async sendConfirmation(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    await this.reminders.sendNow(clinic.id, id);
+    return this.back(body.token);
   }
 
   @Post('faq/:id')
@@ -83,8 +197,9 @@ export class PanelController {
   async updateFaq(
     @Param('id') id: string,
     @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
   ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
+    this.assertAccess(body.token, cookieHeader(req));
     const clinic = await this.requireClinic();
 
     await this.knowledge.update(clinic.id, id, {
@@ -100,8 +215,9 @@ export class PanelController {
   @Redirect()
   async createFaq(
     @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
   ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
+    this.assertAccess(body.token, cookieHeader(req));
     const clinic = await this.requireClinic();
 
     if (body.question?.trim() && body.answer?.trim()) {
@@ -123,8 +239,9 @@ export class PanelController {
   async updateService(
     @Param('id') id: string,
     @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
   ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
+    this.assertAccess(body.token, cookieHeader(req));
     const clinic = await this.requireClinic();
 
     const duration = Number(body.durationMinutes);
@@ -142,77 +259,20 @@ export class PanelController {
     return this.back(body.token);
   }
 
-  @Post('tickets/:id/assumir')
-  @Redirect()
-  async assumeTicket(
-    @Param('id') id: string,
-    @Body() body: Record<string, string | undefined>,
-  ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
-    const clinic = await this.requireClinic();
-    const ticket = await this.requireTicket(clinic.id, id);
+  /** Session cookie wins; the legacy token is a non-production bootstrap only. */
+  private assertAccess(
+    token: string | undefined,
+    cookie: string | undefined,
+  ): PanelSession | null {
+    const session = this.auth.verify(cookie);
+    if (session) return session;
 
-    await this.escalation.accept({ tenantId: clinic.id, ticket, userId: null });
-    return this.back(body.token);
-  }
-
-  @Post('tickets/:id/responder')
-  @Redirect()
-  async replyTicket(
-    @Param('id') id: string,
-    @Body() body: Record<string, string | undefined>,
-  ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
-    const clinic = await this.requireClinic();
-    const ticket = await this.requireTicket(clinic.id, id);
-
-    const answer = body.answer?.trim();
-    if (answer) {
-      await this.escalation.reply({
-        tenantId: clinic.id,
-        ticket,
-        userId: null,
-        text: answer,
-      });
+    const bootstrapAllowed = this.env.nodeEnv !== 'production';
+    if (bootstrapAllowed && this.env.panelToken && token === this.env.panelToken) {
+      return null;
     }
 
-    return this.back(body.token);
-  }
-
-  @Post('tickets/:id/encerrar')
-  @Redirect()
-  async closeTicket(
-    @Param('id') id: string,
-    @Body() body: Record<string, string | undefined>,
-  ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
-    const clinic = await this.requireClinic();
-    const ticket = await this.requireTicket(clinic.id, id);
-
-    await this.escalation.resolve({ tenantId: clinic.id, ticket });
-    return this.back(body.token);
-  }
-
-  @Post('agendamentos/:id/confirmar')
-  @Redirect()
-  async sendConfirmation(
-    @Param('id') id: string,
-    @Body() body: Record<string, string | undefined>,
-  ): Promise<{ url: string; statusCode: number }> {
-    this.assertToken(body.token);
-    const clinic = await this.requireClinic();
-
-    await this.reminders.sendNow(clinic.id, id);
-    return this.back(body.token);
-  }
-
-  private assertToken(token: string | undefined): void {
-    if (!this.env.panelToken) {
-      throw new NotFoundException('Panel is not configured');
-    }
-    if (token !== this.env.panelToken) {
-      throw new UnauthorizedException('Invalid panel token');
-    }
+    throw new UnauthorizedException('Authentication required');
   }
 
   private async requireClinic(): Promise<{ id: string }> {
@@ -228,6 +288,7 @@ export class PanelController {
   }
 
   private back(token: string | undefined): { url: string; statusCode: number } {
-    return { url: `/painel?token=${encodeURIComponent(token ?? '')}`, statusCode: 303 };
+    const suffix = token ? `?token=${encodeURIComponent(token)}` : '';
+    return { url: `/painel${suffix}`, statusCode: 303 };
   }
 }

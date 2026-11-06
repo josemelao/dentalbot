@@ -32,6 +32,7 @@ const EnvSchema = z
       .default('true')
       .transform((value) => value === 'true'),
     PANEL_TOKEN: optionalString(z.string().min(1)),
+    SESSION_SECRET: optionalString(z.string().min(16)),
     TYPING_MIN_MS: z.coerce.number().int().min(0).default(400),
     TYPING_PER_CHAR_MS: z.coerce.number().int().min(0).default(25),
     TYPING_MAX_MS: z.coerce.number().int().min(0).default(2500),
@@ -82,6 +83,7 @@ export interface AppEnv {
   routerConfidenceThreshold: number;
   messageEmoji: boolean;
   panelToken: string | null;
+  sessionSecret: string | null;
   typingMinMs: number;
   typingPerCharMs: number;
   typingMaxMs: number;
@@ -119,6 +121,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     routerConfidenceThreshold: env.ROUTER_CONFIDENCE_THRESHOLD,
     messageEmoji: env.MESSAGE_EMOJI,
     panelToken: env.PANEL_TOKEN ?? null,
+    sessionSecret: env.SESSION_SECRET ?? null,
     typingMinMs: env.TYPING_MIN_MS,
     typingPerCharMs: env.TYPING_PER_CHAR_MS,
     typingMaxMs: env.TYPING_MAX_MS,

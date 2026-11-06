@@ -6,3 +6,4 @@ process.env.TELEGRAM_WEBHOOK_SECRET = 'test-secret';
 process.env.AI_PROVIDER = 'fake';
 process.env.LOG_LEVEL = 'error';
 process.env.PANEL_TOKEN = 'test-panel';
+process.env.SESSION_SECRET = 'test-session-secret-0123456789';

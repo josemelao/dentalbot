@@ -26,6 +26,7 @@ import { AppointmentsRepository } from './db/repositories/appointments.repositor
 import { AuditRepository } from './db/repositories/audit.repository';
 import { CatalogRepository } from './db/repositories/catalog.repository';
 import { ChannelsRepository } from './db/repositories/channels.repository';
+import { ClinicUsersRepository } from './db/repositories/clinic-users.repository';
 import { ConversationsRepository } from './db/repositories/conversations.repository';
 import { KnowledgeRepository } from './db/repositories/knowledge.repository';
 import { LocksRepository } from './db/repositories/locks.repository';
@@ -38,6 +39,7 @@ import { WebhookEventsRepository } from './db/repositories/webhook-events.reposi
 import { DB_POOL, ENV } from './db/tokens';
 import { HealthController } from './health/health.controller';
 import { PanelController } from './panel/panel.controller';
+import { PanelAuthService } from './panel/panel-auth.service';
 import { PanelService } from './panel/panel.service';
 import { AvailabilityService } from './scheduling/availability.service';
 import { AttendanceService } from './scheduling/attendance.service';
@@ -372,6 +374,21 @@ export class AppModule {
             PatientsRepository,
             AuditRepository,
           ],
+        },
+        {
+          provide: ClinicUsersRepository,
+          useFactory: (pool: Pool) => new ClinicUsersRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: PanelAuthService,
+          useFactory: (users: ClinicUsersRepository) =>
+            new PanelAuthService({
+              users,
+              secret: options.env.sessionSecret,
+              now: () => new Date(),
+            }),
+          inject: [ClinicUsersRepository],
         },
         {
           provide: PanelService,
