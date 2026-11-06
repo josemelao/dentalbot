@@ -37,6 +37,7 @@ import { WebhookEventsRepository } from './db/repositories/webhook-events.reposi
 import { DB_POOL, ENV } from './db/tokens';
 import { HealthController } from './health/health.controller';
 import { AvailabilityService } from './scheduling/availability.service';
+import { AttendanceService } from './scheduling/attendance.service';
 import { BookingService } from './scheduling/booking.service';
 import { SchedulingFlowService } from './scheduling/scheduling-flow.service';
 import { SlotEngine } from './scheduling/slot-engine';
@@ -300,6 +301,28 @@ export class AppModule {
           ],
         },
         {
+          provide: AttendanceService,
+          useFactory: (
+            appointments: AppointmentsRepository,
+            catalog: CatalogRepository,
+            patients: PatientsRepository,
+            audit: AuditRepository,
+          ) =>
+            new AttendanceService({
+              appointments,
+              catalog,
+              patients,
+              audit,
+              now: () => new Date(),
+            }),
+          inject: [
+            AppointmentsRepository,
+            CatalogRepository,
+            PatientsRepository,
+            AuditRepository,
+          ],
+        },
+        {
           provide: OwnerCommandService,
           useFactory: (
             tickets: TicketsRepository,
@@ -308,6 +331,7 @@ export class AppModule {
             messages: MessagesRepository,
             audit: AuditRepository,
             escalation: EscalationService,
+            attendance: AttendanceService,
             channel: ChannelAdapter,
           ) =>
             new OwnerCommandService({
@@ -317,6 +341,7 @@ export class AppModule {
               messages,
               audit,
               escalation,
+              attendance,
               channel,
               now: () => new Date(),
             }),
@@ -327,6 +352,7 @@ export class AppModule {
             MessagesRepository,
             AuditRepository,
             EscalationService,
+            AttendanceService,
             CHANNEL_ADAPTER,
           ],
         },

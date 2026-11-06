@@ -151,7 +151,7 @@ export class AttendanceService {
     };
   }
 
-  private async timezoneFor(tenantId: string): Promise<string> {
+  async timezoneFor(tenantId: string): Promise<string> {
     const locations = await this.deps.catalog.listActiveLocations(tenantId);
     return locations[0]?.timezone ?? 'America/Sao_Paulo';
   }

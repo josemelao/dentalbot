@@ -1,16 +1,21 @@
+import { DateTime } from 'luxon';
 import { ChannelAdapter } from '../channels/channel-adapter';
+import { normalizeText } from '../common/text';
 import { AuditRepository } from '../db/repositories/audit.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
 import { MessagesRepository } from '../db/repositories/messages.repository';
 import { PatientsRepository } from '../db/repositories/patients.repository';
 import { HumanTicket } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
+import { AttendanceService } from '../scheduling/attendance.service';
+import { formatAgenda } from './agenda-messages';
 import { EscalationService } from './escalation.service';
 
 export const OWNER_MENU =
   '1) Assumir a conversa\n' +
   '2) Encerrar o ticket\n' +
   '3) Responder ao paciente (envie: 3 sua mensagem)\n' +
+  '4) Ver agenda\n' +
   'Responda com o número.';
 
 export interface OwnerCommandDependencies {
@@ -20,6 +25,7 @@ export interface OwnerCommandDependencies {
   messages: MessagesRepository;
   audit: AuditRepository;
   escalation: EscalationService;
+  attendance: AttendanceService;
   channel: ChannelAdapter;
   now: () => Date;
 }
@@ -53,6 +59,12 @@ export class OwnerCommandService {
 
   private async dispatch(input: OwnerCommandInput): Promise<string> {
     const text = input.text.trim();
+
+    if (text === '4' || /^agenda\b/i.test(text)) {
+      const when = text === '4' ? '' : text.replace(/^agenda\b/i, '').trim();
+      return this.agenda(input.tenantId, when);
+    }
+
     const ticket = await this.deps.tickets.findLatestOpen(input.tenantId);
 
     if (!ticket) {
@@ -91,6 +103,47 @@ export class OwnerCommandService {
     }
 
     return OWNER_MENU;
+  }
+
+  private async agenda(tenantId: string, when: string): Promise<string> {
+    const timezone = await this.deps.attendance.timezoneFor(tenantId);
+    const dateISO = this.resolveDate(when, timezone);
+    if (!dateISO) {
+      return 'Não entendi a data. Use: agenda, agenda amanhã ou agenda 09/11.';
+    }
+
+    const rows = await this.deps.attendance.listDay(tenantId, dateISO);
+    return formatAgenda(rows, dateISO, timezone);
+  }
+
+  private resolveDate(raw: string, timezone: string): string | null {
+    const now = DateTime.now().setZone(timezone);
+    const text = normalizeText(raw);
+
+    if (!text || text === 'hoje') return now.toISODate();
+    if (text === 'amanha') return now.plus({ days: 1 }).toISODate();
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+
+    const short = text.match(/^(\d{1,2})[/.-](\d{1,2})$/);
+    if (short) {
+      const candidate = now.set({ day: Number(short[1]), month: Number(short[2]) });
+      if (!candidate.isValid) return null;
+      return (candidate < now.startOf('day') ? candidate.plus({ years: 1 }) : candidate).toISODate();
+    }
+
+    const weekdays = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado'];
+    const weekday = weekdays.find((day) => text.includes(day));
+    if (weekday) {
+      for (let offset = 0; offset < 8; offset += 1) {
+        const candidate = now.plus({ days: offset });
+        if (normalizeText(candidate.setLocale('pt-BR').weekdayLong ?? '').startsWith(weekday)) {
+          return candidate.toISODate();
+        }
+      }
+    }
+
+    return null;
   }
 
   private async relay(

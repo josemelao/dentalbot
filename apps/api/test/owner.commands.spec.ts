@@ -138,4 +138,20 @@ describe('owner commands', () => {
 
     expect(fakeChannel.sent.at(-1)?.text).toContain('Nenhum ticket aberto');
   });
+
+  it('shows the agenda without needing an open ticket', async () => {
+    const { ids, app, fakeChannel } = await setup();
+
+    await post(app, ids.channelExternalId, update(11, OWNER_ID, '4'));
+
+    expect(fakeChannel.sent.at(-1)?.text).toMatch(/^Agenda de hoje/);
+  });
+
+  it('rejects an agenda date it cannot understand', async () => {
+    const { ids, app, fakeChannel } = await setup();
+
+    await post(app, ids.channelExternalId, update(12, OWNER_ID, 'agenda quando der'));
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('Não entendi a data');
+  });
 });
