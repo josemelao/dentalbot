@@ -169,4 +169,124 @@ describe('panel', () => {
     expect(response.status).toBe(401);
     await app.close();
   });
+
+  it('sends the confirmation reminder on demand, once', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const scheduling = await seedScheduling(pool, clinic.tenantId);
+    const { rows } = await pool.query(
+      `insert into appointments
+         (tenant_id, patient_contact_id, service_id, location_id, start_at, end_at, status)
+       values ($1, $2, $3, $4, now() + interval '3 days',
+               now() + interval '3 days 40 minutes', 'BOOKED')
+       returning id`,
+      [clinic.tenantId, clinic.contactId, scheduling.cleaningServiceId, scheduling.locationId],
+    );
+
+    const { app, fakeChannel } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    await request(server)
+      .post(`/painel/agendamentos/${rows[0].id}/confirmar`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    expect(fakeChannel.sent.at(-1)?.text).toContain('Lembrete: Limpeza');
+
+    await request(server)
+      .post(`/painel/agendamentos/${rows[0].id}/confirmar`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    const reminders = await pool.query(
+      `select count(*)::int as n from appointment_reminders where appointment_id = $1`,
+      [rows[0].id],
+    );
+    expect(reminders.rows[0].n).toBe(1);
+
+    await app.close();
+  });
+
+  it('replies to a ticket from the panel', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const { rows } = await pool.query(
+      `insert into human_tickets
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
+       values ($1, $2, $3, 'CLINICAL', 'dor', '?', now() + interval '10 minutes')
+       returning id`,
+      [clinic.tenantId, clinic.conversationId, clinic.contactId],
+    );
+
+    const { app, fakeChannel } = await buildTestApp({ pool });
+    const response = await request((app as any).getHttpServer())
+      .post(`/painel/tickets/${rows[0].id}/responder`)
+      .type('form')
+      .send({ token: 'test-panel', answer: 'Pode vir amanhã às 9h.' });
+
+    expect(response.status).toBe(303);
+    expect(fakeChannel.sent.at(-1)?.text).toBe('Pode vir amanhã às 9h.');
+
+    const ticket = await pool.query(
+      `select status, answer from human_tickets where id = $1`,
+      [rows[0].id],
+    );
+    expect(ticket.rows[0]).toEqual({
+      status: 'answered',
+      answer: 'Pode vir amanhã às 9h.',
+    });
+
+    await app.close();
+  });
+
+  it('assumes and then closes a ticket from the panel', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const { rows } = await pool.query(
+      `insert into human_tickets
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
+       values ($1, $2, $3, 'UNKNOWN', 'duvida', '?', now() + interval '10 minutes')
+       returning id`,
+      [clinic.tenantId, clinic.conversationId, clinic.contactId],
+    );
+
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    await request(server)
+      .post(`/painel/tickets/${rows[0].id}/assumir`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    const accepted = await pool.query(
+      `select accepted_at from human_tickets where id = $1`,
+      [rows[0].id],
+    );
+    expect(accepted.rows[0].accepted_at).not.toBeNull();
+
+    const stateAfterAccept = await pool.query(
+      `select state from conversations where id = $1`,
+      [clinic.conversationId],
+    );
+    expect(stateAfterAccept.rows[0].state).toBe('HUMAN_ACTIVE');
+
+    await request(server)
+      .post(`/painel/tickets/${rows[0].id}/encerrar`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    const closed = await pool.query(
+      `select status from human_tickets where id = $1`,
+      [rows[0].id],
+    );
+    expect(closed.rows[0].status).toBe('resolved');
+
+    const stateAfterClose = await pool.query(
+      `select state from conversations where id = $1`,
+      [clinic.conversationId],
+    );
+    expect(stateAfterClose.rows[0].state).toBe('ACTIVE');
+
+    await app.close();
+  });
 });

@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { NoopOwnerNotifier } from '../src/channels/owner-notifier';
+import { FakeChannelAdapter } from '../src/channels/fake/fake-channel.adapter';
 import { AuditRepository } from '../src/db/repositories/audit.repository';
 import { ChannelsRepository } from '../src/db/repositories/channels.repository';
 import { ConversationsRepository } from '../src/db/repositories/conversations.repository';
@@ -260,9 +261,11 @@ describe('accepted ticket hands the conversation to the human', () => {
       channels: new ChannelsRepository(pool),
       conversations: new ConversationsRepository(pool),
       patients: new PatientsRepository(pool),
+      messages: new MessagesRepository(pool),
       audit: new AuditRepository(pool),
       notifier: new NoopOwnerNotifier(),
       ownerChannel: 'telegram',
+      channel: new FakeChannelAdapter(),
       slaMinutes: 15,
     }).resolve({ tenantId: ids.tenantId, ticket });
 

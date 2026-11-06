@@ -32,6 +32,7 @@ import { LocksRepository } from './db/repositories/locks.repository';
 import { MessagesRepository } from './db/repositories/messages.repository';
 import { OperationsRepository } from './db/repositories/operations.repository';
 import { PatientsRepository } from './db/repositories/patients.repository';
+import { RemindersRepository } from './db/repositories/reminders.repository';
 import { TicketsRepository } from './db/repositories/tickets.repository';
 import { WebhookEventsRepository } from './db/repositories/webhook-events.repository';
 import { DB_POOL, ENV } from './db/tokens';
@@ -43,6 +44,7 @@ import { AttendanceService } from './scheduling/attendance.service';
 import { BookingService } from './scheduling/booking.service';
 import { SchedulingFlowService } from './scheduling/scheduling-flow.service';
 import { SlotEngine } from './scheduling/slot-engine';
+import { ReminderService } from './scheduling/reminder.service';
 import { ResponseComposer } from './pipeline/composer.service';
 import { EscalationService } from './pipeline/escalation.service';
 import { OwnerCommandService } from './pipeline/owner-command.service';
@@ -280,17 +282,21 @@ export class AppModule {
             channels: ChannelsRepository,
             conversations: ConversationsRepository,
             patients: PatientsRepository,
+            messages: MessagesRepository,
             audit: AuditRepository,
             notifierService: OwnerNotifier,
+            channel: ChannelAdapter,
           ) =>
             new EscalationService({
               tickets,
               channels,
               conversations,
               patients,
+              messages,
               audit,
               notifier: notifierService,
               ownerChannel: 'telegram',
+              channel,
               slaMinutes: options.env.slaMinutes,
             }),
           inject: [
@@ -298,8 +304,51 @@ export class AppModule {
             ChannelsRepository,
             ConversationsRepository,
             PatientsRepository,
+            MessagesRepository,
             AuditRepository,
             OWNER_NOTIFIER,
+            CHANNEL_ADAPTER,
+          ],
+        },
+        {
+          provide: RemindersRepository,
+          useFactory: (pool: Pool) => new RemindersRepository(pool),
+          inject: [DB_POOL],
+        },
+        {
+          provide: ReminderService,
+          useFactory: (
+            appointments: AppointmentsRepository,
+            reminders: RemindersRepository,
+            patients: PatientsRepository,
+            catalog: CatalogRepository,
+            messages: MessagesRepository,
+            conversations: ConversationsRepository,
+            audit: AuditRepository,
+            channel: ChannelAdapter,
+          ) =>
+            new ReminderService({
+              appointments,
+              reminders,
+              patients,
+              catalog,
+              messages,
+              conversations,
+              audit,
+              channel,
+              now: () => new Date(),
+              minLeadHours: options.env.reminderMinLeadHours,
+              maxLeadHours: options.env.reminderMaxLeadHours,
+            }),
+          inject: [
+            AppointmentsRepository,
+            RemindersRepository,
+            PatientsRepository,
+            CatalogRepository,
+            MessagesRepository,
+            ConversationsRepository,
+            AuditRepository,
+            CHANNEL_ADAPTER,
           ],
         },
         {

@@ -1,8 +1,10 @@
 import { OwnerNotifier } from '../channels/owner-notifier';
+import { ChannelAdapter } from '../channels/channel-adapter';
 import { Channel } from '../contracts/channel';
 import { AuditRepository } from '../db/repositories/audit.repository';
 import { ChannelsRepository } from '../db/repositories/channels.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
+import { MessagesRepository } from '../db/repositories/messages.repository';
 import { PatientsRepository } from '../db/repositories/patients.repository';
 import { HumanTicket, TicketReason } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
@@ -13,9 +15,11 @@ export interface EscalationDependencies {
   channels: ChannelsRepository;
   conversations: ConversationsRepository;
   patients: PatientsRepository;
+  messages: MessagesRepository;
   audit: AuditRepository;
   notifier: OwnerNotifier;
   ownerChannel: Channel;
+  channel: ChannelAdapter;
   slaMinutes: number;
 }
 
@@ -145,6 +149,55 @@ export class EscalationService {
       { ticket, patientLabel, text: formatTicketCard(ticket, patientLabel) },
       recipients,
     );
+  }
+
+  /** Sends a human answer to the patient and records it on the ticket. */
+  async reply(input: {
+    tenantId: string;
+    ticket: HumanTicket;
+    userId: string | null;
+    text: string;
+    correlationId?: string | null;
+  }): Promise<void> {
+    const contact = await this.deps.patients.findContactById(
+      input.tenantId,
+      input.ticket.patientContactId,
+    );
+    if (!contact) throw new Error('Ticket contact not found');
+
+    await this.deps.channel.send({ externalUserId: contact.externalUserId, text: input.text });
+
+    await this.deps.messages.appendOutbound({
+      tenantId: input.tenantId,
+      conversationId: input.ticket.conversationId,
+      channel: contact.channel,
+      content: input.text,
+      deliveryStatus: 'sent',
+    });
+
+    await this.deps.conversations.touchOutbound(
+      input.tenantId,
+      input.ticket.conversationId,
+      new Date(),
+    );
+
+    await this.deps.tickets.answer(input.tenantId, input.ticket.id, input.text, input.userId);
+    await this.deps.tickets.addEvent({
+      tenantId: input.tenantId,
+      ticketId: input.ticket.id,
+      event: 'answered',
+      actorType: 'human',
+      actorId: input.userId,
+    });
+    await this.deps.audit.append({
+      tenantId: input.tenantId,
+      actorType: 'human',
+      actorId: input.userId,
+      action: 'ticket_answered',
+      entityType: 'human_ticket',
+      entityId: input.ticket.id,
+      correlationId: input.correlationId ?? null,
+    });
   }
 
   /**

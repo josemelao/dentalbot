@@ -151,45 +151,11 @@ export class OwnerCommandService {
     ticket: HumanTicket,
     answer: string,
   ): Promise<void> {
-    const contact = await this.deps.patients.findContactById(
-      input.tenantId,
-      ticket.patientContactId,
-    );
-    if (!contact) {
-      throw new Error('Ticket contact not found');
-    }
-
-    await this.deps.channel.send({ externalUserId: contact.externalUserId, text: answer });
-
-    await this.deps.messages.appendOutbound({
+    await this.deps.escalation.reply({
       tenantId: input.tenantId,
-      conversationId: ticket.conversationId,
-      channel: contact.channel,
-      content: answer,
-      deliveryStatus: 'sent',
-    });
-
-    await this.deps.conversations.touchOutbound(
-      input.tenantId,
-      ticket.conversationId,
-      this.deps.now(),
-    );
-
-    await this.deps.tickets.answer(input.tenantId, ticket.id, answer, input.userId);
-    await this.deps.tickets.addEvent({
-      tenantId: input.tenantId,
-      ticketId: ticket.id,
-      event: 'answered',
-      actorType: 'human',
-      actorId: input.userId,
-    });
-    await this.deps.audit.append({
-      tenantId: input.tenantId,
-      actorType: 'human',
-      actorId: input.userId,
-      action: 'ticket_answered',
-      entityType: 'human_ticket',
-      entityId: ticket.id,
+      ticket,
+      userId: input.userId,
+      text: answer,
       correlationId: input.correlationId,
     });
   }

@@ -44,18 +44,20 @@ export function buildInboundService(
   const safety = new SafetyService();
   const faq = new FaqService(new KnowledgeRepository(pool));
   const notifier = new RecordingOwnerNotifier();
+  const channel = new FakeChannelAdapter();
   const escalation = new EscalationService({
     tickets,
     channels,
     conversations,
     patients,
+    messages,
     audit,
     notifier,
     ownerChannel: 'telegram',
+    channel,
     slaMinutes: 15,
   });
   const composer = new ResponseComposer();
-  const channel = new FakeChannelAdapter();
 
   const catalog = new CatalogRepository(pool);
   const availability = new AvailabilityService(catalog, new SlotEngine(), {

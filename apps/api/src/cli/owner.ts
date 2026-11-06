@@ -7,6 +7,7 @@ import { createPool } from '../db/pool';
 import { AuditRepository } from '../db/repositories/audit.repository';
 import { ChannelsRepository } from '../db/repositories/channels.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
+import { MessagesRepository } from '../db/repositories/messages.repository';
 import { PatientsRepository } from '../db/repositories/patients.repository';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { EscalationService } from '../pipeline/escalation.service';
@@ -81,9 +82,11 @@ async function main(): Promise<void> {
       channels: new ChannelsRepository(pool),
       conversations: new ConversationsRepository(pool),
       patients: new PatientsRepository(pool),
+      messages: new MessagesRepository(pool),
       audit: new AuditRepository(pool),
       notifier: new ChannelOwnerNotifier(channel),
       ownerChannel: 'telegram',
+      channel,
       slaMinutes: env.slaMinutes,
     }).renotify(openTicket);
 

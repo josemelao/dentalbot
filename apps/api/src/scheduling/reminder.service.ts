@@ -59,6 +59,33 @@ export function formatReminder(
 export class ReminderService {
   constructor(private readonly deps: ReminderDependencies) {}
 
+  /** Sends the reminder for one appointment, ignoring the window. Idempotent. */
+  async sendNow(
+    tenantId: string,
+    appointmentId: string,
+  ): Promise<'sent' | 'already' | 'failed'> {
+    const appointment = await this.deps.appointments.findById(tenantId, appointmentId);
+    if (!appointment) return 'failed';
+
+    const contact = await this.deps.patients.findContactById(
+      tenantId,
+      appointment.patientContactId,
+    );
+    if (!contact || contact.optInStatus === 'opted_out') return 'failed';
+
+    const claim = await this.deps.reminders.claim({
+      tenantId,
+      appointmentId: appointment.id,
+      kind: '24H',
+      channel: contact.channel,
+    });
+    if (!claim) return 'already';
+
+    const locations = await this.deps.catalog.listActiveLocations(tenantId);
+    const ok = await this.deliver(tenantId, appointment, contact, claim, locations);
+    return ok ? 'sent' : 'failed';
+  }
+
   async sweepTenant(tenantId: string): Promise<ReminderSweepResult> {
     const now = this.deps.now();
     const from = new Date(now.getTime() + this.deps.minLeadHours * 3_600_000);
@@ -97,58 +124,69 @@ export class ReminderService {
         continue;
       }
 
-      try {
-        const service = await this.deps.catalog.findService(
-          tenantId,
-          appointment.serviceId,
-        );
-        const location = locations.find((item) => item.id === appointment.locationId);
-        const timezone = location?.timezone ?? 'America/Sao_Paulo';
-        const text = formatReminder(
-          service?.name ?? 'sua consulta',
-          appointment.startAt,
-          timezone,
-        );
-
-        const { externalMessageId } = await this.deps.channel.send({
-          externalUserId: contact.externalUserId,
-          text,
-        });
-
-        await this.deps.reminders.markSent(tenantId, claim, externalMessageId);
-
-        const conversationId = await this.findConversationId(
-          tenantId,
-          appointment.patientContactId,
-        );
-        if (conversationId) {
-          await this.deps.messages.appendOutbound({
-            tenantId,
-            conversationId,
-            channel: contact.channel,
-            content: text,
-            deliveryStatus: 'sent',
-          });
-          await this.deps.conversations.touchOutbound(tenantId, conversationId, now);
-        }
-
-        await this.deps.audit.append({
-          tenantId,
-          actorType: 'bot',
-          action: 'reminder_sent',
-          entityType: 'appointment',
-          entityId: appointment.id,
-          metadata: { kind: '24H' },
-        });
-
+      if (await this.deliver(tenantId, appointment, contact, claim, locations)) {
         sent += 1;
-      } catch {
-        await this.deps.reminders.release(tenantId, claim);
+      } else {
         failed += 1;
       }
     }
 
     return { tenantId, eligible: due.length, sent, failed, skipped };
+  }
+
+  private async deliver(
+    tenantId: string,
+    appointment: { id: string; serviceId: string; locationId: string; startAt: Date; patientContactId: string },
+    contact: { externalUserId: string; channel: 'telegram' | 'whatsapp' },
+    claim: string,
+    locations: Array<{ id: string; timezone: string }>,
+  ): Promise<boolean> {
+    try {
+      const service = await this.deps.catalog.findService(tenantId, appointment.serviceId);
+      const location = locations.find((item) => item.id === appointment.locationId);
+      const timezone = location?.timezone ?? 'America/Sao_Paulo';
+      const text = formatReminder(
+        service?.name ?? 'sua consulta',
+        appointment.startAt,
+        timezone,
+      );
+
+      const { externalMessageId } = await this.deps.channel.send({
+        externalUserId: contact.externalUserId,
+        text,
+      });
+
+      await this.deps.reminders.markSent(tenantId, claim, externalMessageId);
+
+      const conversationId = await this.findConversationId(
+        tenantId,
+        appointment.patientContactId,
+      );
+      if (conversationId) {
+        await this.deps.messages.appendOutbound({
+          tenantId,
+          conversationId,
+          channel: contact.channel,
+          content: text,
+          deliveryStatus: 'sent',
+        });
+        await this.deps.conversations.touchOutbound(tenantId, conversationId, this.deps.now());
+      }
+
+      await this.deps.audit.append({
+        tenantId,
+        actorType: 'bot',
+        action: 'reminder_sent',
+        entityType: 'appointment',
+        entityId: appointment.id,
+        metadata: { kind: '24H' },
+      });
+
+      return true;
+    } catch {
+      await this.deps.reminders.release(tenantId, claim);
+      return false;
+    }
   }
 
   private async findConversationId(

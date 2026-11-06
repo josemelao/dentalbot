@@ -14,7 +14,10 @@ import {
 import { AppEnv } from '../config/env';
 import { CatalogRepository } from '../db/repositories/catalog.repository';
 import { KnowledgeRepository } from '../db/repositories/knowledge.repository';
+import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { ENV } from '../db/tokens';
+import { EscalationService } from '../pipeline/escalation.service';
+import { ReminderService } from '../scheduling/reminder.service';
 import { PanelService } from './panel.service';
 import { renderPanel } from './panel.view';
 
@@ -35,6 +38,9 @@ export class PanelController {
     private readonly panel: PanelService,
     private readonly knowledge: KnowledgeRepository,
     private readonly catalog: CatalogRepository,
+    private readonly tickets: TicketsRepository,
+    private readonly escalation: EscalationService,
+    private readonly reminders: ReminderService,
   ) {}
 
   @Get()
@@ -118,6 +124,70 @@ export class PanelController {
     return this.back(body.token);
   }
 
+  @Post('tickets/:id/assumir')
+  @Redirect()
+  async assumeTicket(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertToken(body.token);
+    const clinic = await this.requireClinic();
+    const ticket = await this.requireTicket(clinic.id, id);
+
+    await this.escalation.accept({ tenantId: clinic.id, ticket, userId: null });
+    return this.back(body.token);
+  }
+
+  @Post('tickets/:id/responder')
+  @Redirect()
+  async replyTicket(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertToken(body.token);
+    const clinic = await this.requireClinic();
+    const ticket = await this.requireTicket(clinic.id, id);
+
+    const answer = body.answer?.trim();
+    if (answer) {
+      await this.escalation.reply({
+        tenantId: clinic.id,
+        ticket,
+        userId: null,
+        text: answer,
+      });
+    }
+
+    return this.back(body.token);
+  }
+
+  @Post('tickets/:id/encerrar')
+  @Redirect()
+  async closeTicket(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertToken(body.token);
+    const clinic = await this.requireClinic();
+    const ticket = await this.requireTicket(clinic.id, id);
+
+    await this.escalation.resolve({ tenantId: clinic.id, ticket });
+    return this.back(body.token);
+  }
+
+  @Post('agendamentos/:id/confirmar')
+  @Redirect()
+  async sendConfirmation(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertToken(body.token);
+    const clinic = await this.requireClinic();
+
+    await this.reminders.sendNow(clinic.id, id);
+    return this.back(body.token);
+  }
+
   private assertToken(token: string | undefined): void {
     if (!this.env.panelToken) {
       throw new NotFoundException('Panel is not configured');
@@ -131,6 +201,12 @@ export class PanelController {
     const clinic = await this.panel.activeClinic();
     if (!clinic) throw new NotFoundException('No active clinic');
     return clinic;
+  }
+
+  private async requireTicket(tenantId: string, id: string) {
+    const ticket = await this.tickets.findById(tenantId, id);
+    if (!ticket) throw new NotFoundException('Ticket not found');
+    return ticket;
   }
 
   private back(token: string | undefined): { url: string; statusCode: number } {

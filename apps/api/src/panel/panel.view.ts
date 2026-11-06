@@ -18,7 +18,7 @@ const REASON: Record<string, string> = {
 const shiftDay = (dateISO: string, days: number, timezone: string): string =>
   DateTime.fromISO(dateISO, { zone: timezone }).plus({ days }).toISODate() ?? dateISO;
 
-const agendaRows = (data: PanelData): string => {
+const agendaRows = (data: PanelData, token: string): string => {
   const visible = data.agenda.filter(
     (row) => row.status !== 'CANCELLED' && row.status !== 'RESCHEDULE_PENDING',
   );
@@ -38,6 +38,12 @@ const agendaRows = (data: PanelData): string => {
         <td>${escape(row.serviceName)}</td>
         <td>${escape(row.patientLabel)}</td>
         <td><span class="badge ${confirmation.toLowerCase()}">${escape(confirmation)}</span></td>
+        <td>
+          <form method="post" action="/painel/agendamentos/${row.id}/confirmar">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit" class="ghost">pedir confirmação</button>
+          </form>
+        </td>
       </tr>`;
     })
     .join('');
@@ -106,7 +112,7 @@ const serviceRows = (data: PanelData, token: string): string => {
     .join('');
 };
 
-const ticketRows = (data: PanelData): string => {
+const ticketRows = (data: PanelData, token: string): string => {
   if (data.tickets.length === 0) {
     return '<tr><td colspan="4" class="empty">Nenhum ticket aberto.</td></tr>';
   }
@@ -120,8 +126,29 @@ const ticketRows = (data: PanelData): string => {
       return `<tr>
         <td class="mono">#${ticket.id.slice(0, 8)}</td>
         <td>${escape(REASON[ticket.reason] ?? ticket.reason)}</td>
-        <td>${escape(ticket.patientLabel)}<div class="muted">${escape(ticket.question.slice(0, 120))}</div></td>
-        <td><span class="badge ${state}">${escape(state)}</span><div class="muted">SLA ${deadline}</div></td>
+        <td>
+          ${escape(ticket.patientLabel)}
+          <div class="muted">${escape(ticket.question.slice(0, 120))}</div>
+          <form class="reply" method="post" action="/painel/tickets/${ticket.id}/responder">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <input name="answer" placeholder="responder ao paciente" required>
+            <button type="submit">enviar</button>
+          </form>
+        </td>
+        <td>
+          <span class="badge ${state}">${escape(state)}</span>
+          <div class="muted">SLA ${deadline}</div>
+          <div class="actions">
+            <form method="post" action="/painel/tickets/${ticket.id}/assumir">
+              <input type="hidden" name="token" value="${escape(token)}">
+              <button type="submit"${ticket.acceptedAt ? ' disabled' : ''}>assumir</button>
+            </form>
+            <form method="post" action="/painel/tickets/${ticket.id}/encerrar">
+              <input type="hidden" name="token" value="${escape(token)}">
+              <button type="submit" class="ghost">encerrar</button>
+            </form>
+          </div>
+        </td>
       </tr>`;
     })
     .join('');
@@ -173,6 +200,12 @@ export function renderPanel(data: PanelData, token: string): string {
   button { font: inherit; padding:6px 12px; border-radius:6px; border:1px solid #1d4ed8; background:#1d4ed8; color:#fff; cursor:pointer; }
   button:hover { background:#1e40af; }
   form.new { display:grid; grid-template-columns: 120px 1fr 1fr 1fr 110px 90px; gap:8px; padding:14px 16px; border-top:1px solid #e5e7eb; }
+  .actions { display:flex; gap:6px; margin-top:8px; }
+  .actions form { margin:0; }
+  button.ghost { background:#fff; color:#1d4ed8; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  form.reply { display:flex; gap:6px; margin-top:8px; }
+  form.reply input { flex:1; }
 </style>
 </head>
 <body>
@@ -190,15 +223,15 @@ export function renderPanel(data: PanelData, token: string): string {
       </nav>
     </h2>
     <table>
-      <thead><tr><th>Hora</th><th>Serviço</th><th>Paciente</th><th>Status</th></tr></thead>
-      <tbody>${agendaRows(data)}</tbody>
+      <thead><tr><th>Hora</th><th>Serviço</th><th>Paciente</th><th>Status</th><th>Ação</th></tr></thead>
+      <tbody>${agendaRows(data, token)}</tbody>
     </table>
   </section>
   <section>
     <h2>Tickets abertos</h2>
     <table>
       <thead><tr><th>Ticket</th><th>Motivo</th><th>Paciente</th><th>Situação</th></tr></thead>
-      <tbody>${ticketRows(data)}</tbody>
+      <tbody>${ticketRows(data, token)}</tbody>
     </table>
   </section>
   <section>

@@ -3,9 +3,11 @@ import { getTestPool, seedClinic } from './helpers/db';
 import { AuditRepository } from '../src/db/repositories/audit.repository';
 import { ChannelsRepository } from '../src/db/repositories/channels.repository';
 import { ConversationsRepository } from '../src/db/repositories/conversations.repository';
+import { MessagesRepository } from '../src/db/repositories/messages.repository';
 import { PatientsRepository } from '../src/db/repositories/patients.repository';
 import { TicketsRepository } from '../src/db/repositories/tickets.repository';
 import { RecordingOwnerNotifier, NoopOwnerNotifier, OwnerNotifier } from '../src/channels/owner-notifier';
+import { FakeChannelAdapter } from '../src/channels/fake/fake-channel.adapter';
 import { EscalationService } from '../src/pipeline/escalation.service';
 
 const build = (pool: Pool, notifier: OwnerNotifier = new RecordingOwnerNotifier()) => ({
@@ -15,9 +17,11 @@ const build = (pool: Pool, notifier: OwnerNotifier = new RecordingOwnerNotifier(
     channels: new ChannelsRepository(pool),
     conversations: new ConversationsRepository(pool),
     patients: new PatientsRepository(pool),
+    messages: new MessagesRepository(pool),
     audit: new AuditRepository(pool),
     notifier,
     ownerChannel: 'telegram',
+    channel: new FakeChannelAdapter(),
     slaMinutes: 15,
   }),
 });
