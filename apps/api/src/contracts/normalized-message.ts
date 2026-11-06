@@ -43,6 +43,7 @@ export const NormalizedMessageSchema = z
     messageType: z.enum(['text', 'audio', 'image', 'document', 'button', 'unsupported']),
     content: z.string().nullable(),
     media: MediaSchema.nullable(),
+    displayName: z.string().nullable().optional(),
     receivedAt: z.coerce.date(),
   })
   .superRefine((message, ctx) => {

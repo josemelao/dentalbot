@@ -58,6 +58,18 @@ export class PatientsRepository {
     return (rows[0] as PatientContact | undefined) ?? null;
   }
 
+  async updateDisplayName(
+    tenantId: string,
+    contactId: string,
+    displayName: string,
+  ): Promise<void> {
+    await this.db.query(
+      `update patient_contacts set display_name = $3, updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, contactId, displayName],
+    );
+  }
+
   async findPatientByContact(
     tenantId: string,
     contactId: string,

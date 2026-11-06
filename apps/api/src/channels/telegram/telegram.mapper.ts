@@ -58,6 +58,7 @@ export function mapTelegramUpdate(
         ? normalizeCommand(message.text)
         : null,
     media: messageType === 'text' ? null : { kind: messageType },
+    displayName: message.from?.first_name?.trim() || null,
     receivedAt: new Date(message.date * 1000),
   };
 }

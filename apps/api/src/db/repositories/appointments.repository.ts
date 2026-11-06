@@ -142,6 +142,66 @@ export class AppointmentsRepository {
     );
   }
 
+  /** Every appointment that happened (or was scheduled) in the window. */
+  async listInRange(tenantId: string, from: Date, to: Date): Promise<Appointment[]> {
+    const { rows } = await this.pool.query(
+      `select ${APPOINTMENT_COLUMNS}
+       from appointments
+       where tenant_id = $1
+         and start_at >= $2 and start_at < $3
+         and status <> 'BOOKING'
+       order by start_at`,
+      [tenantId, from, to],
+    );
+    return rows as Appointment[];
+  }
+
+  /** Attendance and confirmation counters for the pilot metrics. */
+  async attendanceSummary(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<{
+    scheduled: number;
+    attended: number;
+    noShow: number;
+    lateCancelled: number;
+    confirmed: number;
+    unconfirmed: number;
+    pending: number;
+  }> {
+    const { rows } = await this.pool.query(
+      `select
+         count(*)::int as scheduled,
+         count(*) filter (where attendance_status = 'ATTENDED')::int as attended,
+         count(*) filter (where attendance_status = 'NO_SHOW')::int as "noShow",
+         count(*) filter (where attendance_status = 'LATE_CANCELLED')::int as "lateCancelled",
+         count(*) filter (where confirmation_status = 'CONFIRMED')::int as confirmed,
+         count(*) filter (where confirmation_status = 'DECLINED')::int as unconfirmed,
+         count(*) filter (where confirmation_status = 'PENDING')::int as pending
+       from appointments
+       where tenant_id = $1
+         and start_at >= $2 and start_at < $3
+         and status <> 'BOOKING'`,
+      [tenantId, from, to],
+    );
+    return rows[0];
+  }
+
+  /** Resolves a unique id prefix, so the operator can copy a short id. */
+  async findByIdPrefix(tenantId: string, prefix: string): Promise<Appointment | null> {
+    if (!/^[0-9a-f-]{4,36}$/i.test(prefix)) return null;
+    const { rows } = await this.pool.query(
+      `select ${APPOINTMENT_COLUMNS}
+       from appointments
+       where tenant_id = $1 and id::text like $2
+       limit 2`,
+      [tenantId, `${prefix.toLowerCase()}%`],
+    );
+    if (rows.length !== 1) return null;
+    return rows[0] as Appointment;
+  }
+
   async setCalendarEvent(
     tenantId: string,
     appointmentId: string,

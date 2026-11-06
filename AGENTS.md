@@ -110,3 +110,12 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
 - Silence is never confirmation. Only an explicit reply sets `CONFIRMED`.
 - A reminder is only eligible for `BOOKED` appointments with `PENDING`
   confirmation, and never for an opted-out contact.
+
+## Attendance invariants
+
+- Only a past appointment can be closed; a future one is rejected.
+- A cancelled or `RESCHEDULE_PENDING` appointment has no attendance to close.
+- `LATE_CANCELLED` is never counted as a no-show. The no-show rate is
+  `NO_SHOW / (ATTENDED + NO_SHOW)`.
+- Silence is not attendance: an unclosed appointment stays `PENDING` and must
+  show up in the day list.

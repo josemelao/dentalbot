@@ -56,6 +56,12 @@ describe('inbound end-to-end', () => {
     );
     expect(out.rows[0].n).toBe(1);
 
+    const contact = await pool.query(
+      `select display_name from patient_contacts where tenant_id = $1`,
+      [ids.tenantId],
+    );
+    expect(contact.rows[0].display_name).toBe('Maria');
+
     const audit = await pool.query(
       `select count(*)::int as n from audit_logs
        where tenant_id = $1 and action = 'outbound_message_sent'`,

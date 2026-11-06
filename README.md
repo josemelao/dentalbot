@@ -204,6 +204,31 @@ The patient answers the reminder directly:
 npm run worker
 ```
 
+## Attendance closing and metrics
+
+The pilot's north-star metric only exists if attendance is closed.
+
+```powershell
+# Day list: time, patient, service, status, confirmation, attendance
+npm run attendance -- list 2026-11-09
+
+# One appointment at a time (full id or a unique prefix)
+npm run attendance -- mark b73416ec ATTENDED
+npm run attendance -- mark b73416ec NO_SHOW
+
+# Period metrics
+npm run attendance -- summary 2026-11-01 2026-11-30
+```
+
+Rules:
+
+- only a past appointment can be closed; a future one is rejected;
+- a cancelled or `RESCHEDULE_PENDING` appointment has no attendance;
+- `ATTENDED` sets `status = COMPLETED`, `NO_SHOW` sets `status = NO_SHOW`;
+- a late cancellation is `LATE_CANCELLED` and **never** counts as a no-show;
+- `noShowRate = faltas / (atendidos + faltas)`; silence stays `PENDING` and is
+  visible in the list until someone closes it.
+
 Two destructive demo CLIs exist only for repeatable demos. Both refuse to run
 with `NODE_ENV=production`.
 

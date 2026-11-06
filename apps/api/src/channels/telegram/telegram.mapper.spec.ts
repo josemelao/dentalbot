@@ -45,4 +45,15 @@ describe('mapTelegramUpdate', () => {
     );
     expect(mapped?.content).toBe('/start demo');
   });
+
+  it('maps the Telegram profile name', () => {
+    const mapped = mapTelegramUpdate(
+      {
+        update_id: 1,
+        message: { ...base, from: { id: 3, first_name: 'Maria' }, text: 'oi' },
+      },
+      ctx,
+    );
+    expect(mapped?.displayName).toBe('Maria');
+  });
 });

@@ -43,7 +43,16 @@ export class IdentityService {
         tenantId: normalized.tenantId,
         channel: normalized.channel,
         externalUserId: normalized.externalUserId,
+        displayName: normalized.displayName ?? null,
       });
+    } else if (!contact.displayName && normalized.displayName) {
+      // Telegram gives us the profile name; keep the card and the day list human.
+      await this.deps.patients.updateDisplayName(
+        normalized.tenantId,
+        contact.id,
+        normalized.displayName,
+      );
+      contact = { ...contact, displayName: normalized.displayName };
     }
 
     let conversation = await this.deps.conversations.findOpenByContact(
