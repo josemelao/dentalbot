@@ -25,6 +25,7 @@ import { PendingReplyService, ShadowModeService } from '../pipeline/pending-repl
 import { ReminderService } from '../scheduling/reminder.service';
 import { RescheduleProposalService } from '../scheduling/reschedule-proposal.service';
 import { AttendanceService } from '../scheduling/attendance.service';
+import { DateTime } from 'luxon';
 import { PanelAuthService, PanelSession } from './panel-auth.service';
 import { PanelService } from './panel.service';
 import { renderLogin, renderPanel, renderTicket } from './panel.view';
@@ -295,6 +296,44 @@ export class PanelController {
     this.assertAccess(body.token, cookieHeader(req));
     const clinic = await this.requireClinic();
     await this.catalog.deleteWorkingHour(clinic.id, id);
+    return this.back(body.token);
+  }
+
+  @Post('folgas')
+  @Redirect()
+  async addTimeOff(
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+
+    const timezone = await this.attendance.timezoneFor(clinic.id);
+    const start = DateTime.fromISO(body.startDate ?? '', { zone: timezone }).startOf('day');
+    const end = DateTime.fromISO(body.endDate ?? '', { zone: timezone }).endOf('day');
+
+    if (body.professionalId && start.isValid && end.isValid && start < end) {
+      await this.catalog.addTimeOff(clinic.id, {
+        professionalId: body.professionalId,
+        startAt: start.toJSDate(),
+        endAt: end.toJSDate(),
+        reason: body.reason?.trim() || null,
+      });
+    }
+
+    return this.back(body.token);
+  }
+
+  @Post('folgas/:id/excluir')
+  @Redirect()
+  async deleteTimeOff(
+    @Param('id') id: string,
+    @Body() body: Record<string, string | undefined>,
+    @Req() req?: any,
+  ): Promise<{ url: string; statusCode: number }> {
+    this.assertAccess(body.token, cookieHeader(req));
+    const clinic = await this.requireClinic();
+    await this.catalog.deleteTimeOff(clinic.id, id);
     return this.back(body.token);
   }
 

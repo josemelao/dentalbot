@@ -230,6 +230,29 @@ const holidayRows = (data: PanelData, token: string): string => {
     .join('');
 };
 
+const timeOffRows = (data: PanelData, token: string): string => {
+  if (data.timeOff.length === 0) {
+    return '<tr><td colspan="4" class="empty">Nenhuma folga cadastrada.</td></tr>';
+  }
+  return data.timeOff
+    .map((row) => {
+      const start = DateTime.fromJSDate(row.startAt).setZone(data.timezone).toFormat('dd/MM/yyyy');
+      const end = DateTime.fromJSDate(row.endAt).setZone(data.timezone).toFormat('dd/MM/yyyy');
+      return `<tr>
+        <td>${escape(row.professionalName)}</td>
+        <td>${start} – ${end}</td>
+        <td>${escape(row.reason ?? '')}</td>
+        <td>
+          <form method="post" action="/painel/folgas/${row.id}/excluir">
+            <input type="hidden" name="token" value="${escape(token)}">
+            <button type="submit" class="ghost">remover</button>
+          </form>
+        </td>
+      </tr>`;
+    })
+    .join('');
+};
+
 const ticketRows = (data: PanelData, token: string): string => {
   if (data.tickets.length === 0) {
     return '<tr><td colspan="4" class="empty">Nenhum ticket aberto.</td></tr>';
@@ -564,6 +587,23 @@ export function renderPanel(data: PanelData, token: string): string {
       <input type="hidden" name="token" value="${escape(token)}">
       <input name="date" type="date" required>
       <input name="name" placeholder="Nome do feriado" required>
+      <button type="submit">adicionar</button>
+    </form>
+  </section>
+  <section>
+    <h2>Férias e folgas</h2>
+    <table>
+      <thead><tr><th>Profissional</th><th>Período</th><th>Motivo</th><th></th></tr></thead>
+      <tbody>${timeOffRows(data, token)}</tbody>
+    </table>
+    <form class="row" method="post" action="/painel/folgas">
+      <input type="hidden" name="token" value="${escape(token)}">
+      <select name="professionalId">
+        ${data.professionals.map((p) => `<option value="${p.id}">${escape(p.name)}</option>`).join('')}
+      </select>
+      <input name="startDate" type="date" required>
+      <input name="endDate" type="date" required>
+      <input name="reason" placeholder="motivo (opcional)">
       <button type="submit">adicionar</button>
     </form>
   </section>

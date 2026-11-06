@@ -56,6 +56,14 @@ export interface PanelWorkingHour {
   endTime: string;
 }
 
+export interface PanelTimeOff {
+  id: string;
+  professionalName: string;
+  startAt: Date;
+  endAt: Date;
+  reason: string | null;
+}
+
 export interface PanelHoliday {
   id: string;
   date: string;
@@ -76,6 +84,7 @@ export interface PanelData {
   locationId: string;
   workingHours: PanelWorkingHour[];
   holidays: PanelHoliday[];
+  timeOff: PanelTimeOff[];
   professionals: Array<{ id: string; name: string }>;
 }
 
@@ -115,7 +124,7 @@ export class PanelService {
 
     const date = dateISO ?? DateTime.now().setZone(clinic.timezone).toISODate() ?? '';
 
-    const [agenda, tickets, knowledge, services, templateRows, pending, shadowMode, hours, holidays, professionals, locations] =
+    const [agenda, tickets, knowledge, services, templateRows, pending, shadowMode, hours, holidays, professionals, locations, timeOff] =
       await Promise.all([
         this.deps.attendance.listDay(clinic.id, date),
         this.deps.tickets.listOpen(clinic.id),
@@ -128,6 +137,7 @@ export class PanelService {
         this.deps.catalog.listAllHolidays(clinic.id),
         this.deps.catalog.listProfessionals(clinic.id),
         this.deps.catalog.listActiveLocations(clinic.id),
+        this.deps.catalog.listAllTimeOff(clinic.id),
       ]);
 
     const overrides = new Map(templateRows.map((row) => [row.key, row.variants]));
@@ -157,6 +167,13 @@ export class PanelService {
         endTime: row.endTime,
       })),
       holidays: holidays.map((row) => ({ id: row.id, date: row.date, name: row.name })),
+      timeOff: timeOff.map((row) => ({
+        id: row.id,
+        professionalName: row.professionalName,
+        startAt: row.startAt,
+        endAt: row.endAt,
+        reason: row.reason,
+      })),
       professionals,
       pendingReplies: pending.map((row) => ({
         id: row.id,

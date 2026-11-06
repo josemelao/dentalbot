@@ -663,6 +663,45 @@ describe('panel', () => {
     await app.close();
   });
 
+  it('adds and removes a professional time off', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool);
+    const scheduling = await seedScheduling(pool, clinic.tenantId);
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    await request(server)
+      .post('/painel/folgas')
+      .type('form')
+      .send({
+        token: 'test-panel',
+        professionalId: scheduling.caioId,
+        startDate: '2026-12-01',
+        endDate: '2026-12-10',
+        reason: 'Férias',
+      });
+
+    const created = await pool.query(
+      `select id, reason from professional_time_off where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(created.rows).toHaveLength(1);
+    expect(created.rows[0].reason).toBe('Férias');
+
+    await request(server)
+      .post(`/painel/folgas/${created.rows[0].id}/excluir`)
+      .type('form')
+      .send({ token: 'test-panel' });
+
+    const after = await pool.query(
+      `select count(*)::int as n from professional_time_off where tenant_id = $1`,
+      [clinic.tenantId],
+    );
+    expect(after.rows[0].n).toBe(0);
+
+    await app.close();
+  });
+
   it('replies to a ticket from the panel', async () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });

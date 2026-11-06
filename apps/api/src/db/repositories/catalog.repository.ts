@@ -155,6 +155,51 @@ export class CatalogRepository {
     return rows as Array<{ id: string; name: string }>;
   }
 
+  async listAllTimeOff(tenantId: string): Promise<
+    Array<{
+      id: string;
+      professionalName: string;
+      startAt: Date;
+      endAt: Date;
+      reason: string | null;
+    }>
+  > {
+    const { rows } = await this.db.query(
+      `select t.id, p.name as "professionalName", t.start_at as "startAt",
+              t.end_at as "endAt", t.reason
+       from professional_time_off t
+       join professionals p on p.tenant_id = t.tenant_id and p.id = t.professional_id
+       where t.tenant_id = $1
+       order by t.start_at`,
+      [tenantId],
+    );
+    return rows as Array<{
+      id: string;
+      professionalName: string;
+      startAt: Date;
+      endAt: Date;
+      reason: string | null;
+    }>;
+  }
+
+  async addTimeOff(
+    tenantId: string,
+    input: { professionalId: string; startAt: Date; endAt: Date; reason: string | null },
+  ): Promise<void> {
+    await this.db.query(
+      `insert into professional_time_off (tenant_id, professional_id, start_at, end_at, reason)
+       values ($1, $2, $3, $4, $5)`,
+      [tenantId, input.professionalId, input.startAt, input.endAt, input.reason],
+    );
+  }
+
+  async deleteTimeOff(tenantId: string, id: string): Promise<void> {
+    await this.db.query(
+      `delete from professional_time_off where tenant_id = $1 and id = $2`,
+      [tenantId, id],
+    );
+  }
+
   async listAllWorkingHours(tenantId: string): Promise<
     Array<{
       id: string;
