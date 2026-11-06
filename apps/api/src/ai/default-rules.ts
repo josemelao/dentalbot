@@ -4,6 +4,11 @@ export const DEFAULT_AI_RULES: FakeAiRule[] = [
   // Telegram clients send /start on the very first tap. Treating it as UNKNOWN
   // would open a ticket and silence the bot for the rest of the conversation.
   { when: /^\/(start|help|menu|iniciar|comecar)\b/i, intent: 'GREETING' },
+  {
+    when: /^(sim|s|confirmo|confirmado|vou sim|estarei|claro)\b/i,
+    intent: 'CONFIRM_APPOINTMENT',
+  },
+  { when: /n[ãa]o vou (poder|conseguir)|n[ãa]o poderei|desmarcar/i, intent: 'CANCEL_REQUEST' },
   { when: /hor[aá]rio|funcionamento|que horas abre/i, intent: 'FAQ_ADMIN' },
   { when: /endere[cç]o|onde fica/i, intent: 'FAQ_ADMIN' },
   { when: /conv[eê]nio/i, intent: 'FAQ_ADMIN' },

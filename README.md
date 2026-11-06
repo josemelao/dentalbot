@@ -175,6 +175,35 @@ npm run owner -- unlink <telegramUserId>
 Linking an id also re-sends the card for the current open ticket, so the demo
 works even if the ticket already existed.
 
+## Worker and reminders
+
+`npm run worker` runs the recurring jobs every `WORKER_INTERVAL_MS` (default 60s)
+under a Postgres advisory lock, so it is safe to start more than one:
+
+| Job | What it does |
+|---|---|
+| `sla` | sends the fallback for overdue, unaccepted tickets |
+| `reminders` | sends the 24h reminder and records it |
+| `reconcile` | releases expired locks, reconciles `UNKNOWN` operations |
+
+The reminder is eligible when the appointment starts between
+`REMINDER_MIN_LEAD_HOURS` and `REMINDER_MAX_LEAD_HOURS` from now (default 20–28).
+A 09:15 appointment is reminded around 09:15 the day before, and the wide window
+survives a few hours of downtime. `appointment_reminders` has a unique key on
+`(appointment_id, kind)`, so the same appointment is never reminded twice.
+
+The patient answers the reminder directly:
+
+- `SIM` → `confirmation_status = CONFIRMED` and a confirmation reply;
+- `CANCELAR` / "não vou poder" → the normal cancel flow (identity required);
+- silence is **not** confirmation: the appointment stays `PENDING` and shows up in
+  the daily attendance closing.
+
+```powershell
+# Recurring jobs (separate process)
+npm run worker
+```
+
 Two destructive demo CLIs exist only for repeatable demos. Both refuse to run
 with `NODE_ENV=production`.
 

@@ -377,6 +377,14 @@ export class InboundService {
       return { kind: 'HOLDING_ESCALATED', ticket };
     }
 
+    if (classified.intent === 'CONFIRM_APPOINTMENT') {
+      const result = await this.deps.schedulingFlow.confirmAppointment({
+        tenantId: normalized.tenantId,
+        patientContactId: conversation.patientContactId,
+      });
+      if (result) return { kind: 'FLOW_REPLY', result };
+    }
+
     if (classified.intent === 'HUMAN_REQUEST') {
       const ticket = await this.deps.escalation.create({
         tenantId: normalized.tenantId,

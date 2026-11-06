@@ -17,7 +17,9 @@
     "demo:link-patient": "tsx src/cli/demo-link-patient.ts",
     "ticket": "tsx src/cli/ticket.ts",
     "owner": "tsx src/cli/owner.ts",
-    "sla:sweep": "tsx src/cli/sla-sweep.ts"
+    "sla:sweep": "tsx src/cli/sla-sweep.ts",
+    "worker": "tsx src/worker/worker.ts",
+    "worker:start": "node dist/worker/worker.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

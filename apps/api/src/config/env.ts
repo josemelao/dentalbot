@@ -25,6 +25,9 @@ const EnvSchema = z
     OPENAI_API_KEY: optionalString(z.string().min(1)),
     LOG_LEVEL: z.string().default('info'),
     SLA_MINUTES: z.coerce.number().int().positive().default(15),
+    WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
+    REMINDER_MIN_LEAD_HOURS: z.coerce.number().int().positive().default(20),
+    REMINDER_MAX_LEAD_HOURS: z.coerce.number().int().positive().default(28),
   })
   .superRefine((env, ctx) => {
     if (env.TELEGRAM_BOT_TOKEN && !env.TELEGRAM_WEBHOOK_SECRET) {
@@ -56,6 +59,9 @@ export interface AppEnv {
   openaiApiKey: string | null;
   logLevel: string;
   slaMinutes: number;
+  workerIntervalMs: number;
+  reminderMinLeadHours: number;
+  reminderMaxLeadHours: number;
 }
 
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
@@ -81,5 +87,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     openaiApiKey: env.OPENAI_API_KEY ?? null,
     logLevel: env.LOG_LEVEL,
     slaMinutes: env.SLA_MINUTES,
+    workerIntervalMs: env.WORKER_INTERVAL_MS,
+    reminderMinLeadHours: env.REMINDER_MIN_LEAD_HOURS,
+    reminderMaxLeadHours: env.REMINDER_MAX_LEAD_HOURS,
   };
 }

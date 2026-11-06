@@ -166,6 +166,64 @@ export class AppointmentsRepository {
     );
   }
 
+  async setConfirmationStatus(
+    tenantId: string,
+    appointmentId: string,
+    confirmationStatus: 'PENDING' | 'CONFIRMED' | 'DECLINED',
+  ): Promise<void> {
+    await this.pool.query(
+      `update appointments set confirmation_status = $3, updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, appointmentId, confirmationStatus],
+    );
+  }
+
+  /** Booked appointments starting in the window that still need this reminder. */
+  async listNeedingReminder(
+    tenantId: string,
+    kind: '24H' | '48H',
+    from: Date,
+    to: Date,
+  ): Promise<Appointment[]> {
+    const { rows } = await this.pool.query(
+      `select ${APPOINTMENT_COLUMNS}
+       from appointments a
+       where a.tenant_id = $1
+         and a.status = 'BOOKED'
+         and a.confirmation_status = 'PENDING'
+         and a.start_at >= $3 and a.start_at <= $4
+         and not exists (
+           select 1 from appointment_reminders r
+           where r.tenant_id = a.tenant_id
+             and r.appointment_id = a.id
+             and r.kind = $2
+         )
+       order by a.start_at`,
+      [tenantId, kind, from, to],
+    );
+    return rows as Appointment[];
+  }
+
+  /** The nearest booked appointment of a contact still waiting for confirmation. */
+  async findPendingConfirmation(
+    tenantId: string,
+    patientContactId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Appointment | null> {
+    const { rows } = await this.pool.query(
+      `select ${APPOINTMENT_COLUMNS}
+       from appointments
+       where tenant_id = $1 and patient_contact_id = $2
+         and status = 'BOOKED' and confirmation_status = 'PENDING'
+         and start_at >= $3 and start_at <= $4
+       order by start_at
+       limit 1`,
+      [tenantId, patientContactId, from, to],
+    );
+    return (rows[0] as Appointment | undefined) ?? null;
+  }
+
   async releaseReservations(tenantId: string, appointmentId: string): Promise<void> {
     await this.pool.query(
       `update professional_reservations set status = 'RELEASED'

@@ -33,6 +33,13 @@ export const schedulingMessages = {
   booked: (serviceName: string, slot: OfferedSlot, timezone: string): string =>
     `Agendado! ${serviceName} em ${formatSlot(slot.startAt, timezone)}. Até lá.`,
 
+  confirmedAppointment: (
+    serviceName: string,
+    startAt: string,
+    timezone: string,
+  ): string =>
+    `Presença confirmada: ${serviceName} em ${formatSlot(startAt, timezone)}. Até lá.`,
+
   conflict: (slots: OfferedSlot[], timezone: string): string =>
     `Esse horário acabou de ser ocupado. Tenho estas opções:\n${numbered(slots, timezone)}\nResponda com o número.`,
 

@@ -74,6 +74,45 @@ export interface ReplyFlowInput {
 export class SchedulingFlowService {
   constructor(private readonly deps: SchedulingFlowDependencies) {}
 
+  async confirmAppointment(input: {
+    tenantId: string;
+    patientContactId: string;
+  }): Promise<FlowResult | null> {
+    const now = this.deps.now();
+    const appointment = await this.deps.appointments.findPendingConfirmation(
+      input.tenantId,
+      input.patientContactId,
+      now,
+      new Date(now.getTime() + 48 * 3_600_000),
+    );
+    if (!appointment) return null;
+
+    await this.deps.appointments.setConfirmationStatus(
+      input.tenantId,
+      appointment.id,
+      'CONFIRMED',
+    );
+
+    const service = await this.deps.catalog.findService(
+      input.tenantId,
+      appointment.serviceId,
+    );
+    const locations = await this.deps.catalog.listActiveLocations(input.tenantId);
+    const timezone =
+      locations.find((location) => location.id === appointment.locationId)?.timezone ??
+      'America/Sao_Paulo';
+
+    return {
+      reply: schedulingMessages.confirmedAppointment(
+        service?.name ?? 'sua consulta',
+        appointment.startAt.toISOString(),
+        timezone,
+      ),
+      context: null,
+      status: 'COMPLETED',
+    };
+  }
+
   async start(input: StartFlowInput): Promise<FlowResult> {
     if (input.intent === 'LIST_APPOINTMENTS') {
       return this.startList(input);

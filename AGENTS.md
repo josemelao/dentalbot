@@ -98,3 +98,15 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   directly.
 - The card never carries the full external id: display name, or a masked tail.
 - A failed delivery to one owner must not stop the others.
+
+## Reminder and worker invariants
+
+- Recurring work runs in a separate worker, never in the request path, and every
+  job runs under an advisory lock so two workers cannot double-send.
+- Every job must be idempotent: running it twice must not message a patient twice.
+  `appointment_reminders` uniqueness is the guard for reminders.
+- A reminder is claimed before sending and released on failure, so a transport
+  error retries instead of losing the reminder.
+- Silence is never confirmation. Only an explicit reply sets `CONFIRMED`.
+- A reminder is only eligible for `BOOKED` appointments with `PENDING`
+  confirmation, and never for an opted-out contact.
