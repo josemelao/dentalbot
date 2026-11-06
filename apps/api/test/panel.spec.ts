@@ -207,6 +207,47 @@ describe('panel', () => {
     await app.close();
   });
 
+  it('shows the conversation history and clears the unread badge', async () => {
+    const pool = getTestPool();
+    const clinic = await seedClinic(pool, { withConversation: true });
+    const { rows } = await pool.query(
+      `insert into human_tickets
+         (tenant_id, conversation_id, patient_contact_id, reason, summary, question, sla_due_at)
+       values ($1, $2, $3, 'CLINICAL', 'dor', 'Estou com dor', now() + interval '10 minutes')
+       returning id`,
+      [clinic.tenantId, clinic.conversationId, clinic.contactId],
+    );
+
+    await pool.query(
+      `insert into messages
+         (tenant_id, conversation_id, channel, direction, external_message_id, message_type, content, media, delivery_status)
+       values
+         ($1, $2, 'telegram', 'in', 'm1', 'text', 'Estou com dor', null, 'received'),
+         ($1, $2, 'telegram', 'out', null, 'text', 'Recebi sua mensagem', null, 'sent'),
+         ($1, $2, 'telegram', 'in', 'm2', 'text', 'Piorou de noite', null, 'received')`,
+      [clinic.tenantId, clinic.conversationId],
+    );
+
+    const { app } = await buildTestApp({ pool });
+    const server = (app as any).getHttpServer();
+
+    const list = await request(server).get('/painel?token=test-panel');
+    expect(list.text).toContain('2 nova(s)');
+
+    const detail = await request(server).get(
+      `/painel/tickets/${rows[0].id}?token=test-panel`,
+    );
+    expect(detail.status).toBe(200);
+    expect(detail.text).toContain('Estou com dor');
+    expect(detail.text).toContain('Recebi sua mensagem');
+    expect(detail.text).toContain('Piorou de noite');
+
+    const afterRead = await request(server).get('/painel?token=test-panel');
+    expect(afterRead.text).not.toContain('nova(s)');
+
+    await app.close();
+  });
+
   it('replies to a ticket from the panel', async () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });

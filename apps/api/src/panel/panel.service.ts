@@ -1,8 +1,11 @@
 import { Pool } from 'pg';
 import { DateTime } from 'luxon';
 import { CatalogRepository } from '../db/repositories/catalog.repository';
+import { ConversationsRepository } from '../db/repositories/conversations.repository';
 import { KnowledgeRepository } from '../db/repositories/knowledge.repository';
-import { KnowledgeEntry, Service } from '../db/repositories/rows';
+import { MessagesRepository } from '../db/repositories/messages.repository';
+import { PatientsRepository } from '../db/repositories/patients.repository';
+import { KnowledgeEntry, Message, Service } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { AttendanceService, DayRow } from '../scheduling/attendance.service';
 
@@ -15,6 +18,15 @@ export interface PanelTicket {
   slaDueAt: Date;
   patientLabel: string;
   acceptedAt: Date | null;
+  unreadCount: number;
+}
+
+export interface TicketDetail {
+  ticket: PanelTicket;
+  conversationId: string;
+  patientLabel: string;
+  timezone: string;
+  messages: Message[];
 }
 
 export interface PanelData {
@@ -33,6 +45,9 @@ export interface PanelServiceDependencies {
   tickets: TicketsRepository;
   knowledge: KnowledgeRepository;
   catalog: CatalogRepository;
+  messages: MessagesRepository;
+  conversations: ConversationsRepository;
+  patients: PatientsRepository;
 }
 
 /** Read-only view model for the pilot panel. No writes live here yet. */
@@ -80,7 +95,52 @@ export class PanelService {
         slaDueAt: ticket.slaDueAt,
         patientLabel: ticket.patientLabel?.trim() || `contato •••${ticket.externalUserId.slice(-4)}`,
         acceptedAt: ticket.acceptedAt,
+        unreadCount: ticket.unreadCount,
       })),
+    };
+  }
+
+  /** Ticket detail with the full conversation. Opening it marks it as read. */
+  async openTicket(tenantId: string, ticketId: string): Promise<TicketDetail | null> {
+    const ticket = await this.deps.tickets.findById(tenantId, ticketId);
+    if (!ticket) return null;
+
+    const contact = await this.deps.patients.findContactById(
+      tenantId,
+      ticket.patientContactId,
+    );
+    const messages = await this.deps.messages.listRecent(
+      tenantId,
+      ticket.conversationId,
+      100,
+    );
+    const clinic = await this.activeClinic();
+
+    await this.deps.conversations.markPanelRead(
+      tenantId,
+      ticket.conversationId,
+      new Date(),
+    );
+
+    const patientLabel =
+      contact?.displayName?.trim() || `contato •••${(contact?.externalUserId ?? '').slice(-4)}`;
+
+    return {
+      ticket: {
+        id: ticket.id,
+        reason: ticket.reason,
+        status: ticket.status,
+        summary: ticket.summary,
+        question: ticket.question,
+        slaDueAt: ticket.slaDueAt,
+        patientLabel,
+        acceptedAt: ticket.acceptedAt,
+        unreadCount: 0,
+      },
+      conversationId: ticket.conversationId,
+      patientLabel,
+      timezone: clinic?.timezone ?? 'America/Sao_Paulo',
+      messages,
     };
   }
 }

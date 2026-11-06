@@ -19,7 +19,7 @@ import { ENV } from '../db/tokens';
 import { EscalationService } from '../pipeline/escalation.service';
 import { ReminderService } from '../scheduling/reminder.service';
 import { PanelService } from './panel.service';
-import { renderPanel } from './panel.view';
+import { renderPanel, renderTicket } from './panel.view';
 
 const keywords = (raw: string | undefined): string[] =>
   (raw ?? '')
@@ -58,6 +58,24 @@ export class PanelController {
     }
 
     return renderPanel(data, this.env.panelToken!);
+  }
+
+  @Get('tickets/:id')
+  @Header('content-type', 'text/html; charset=utf-8')
+  @Header('cache-control', 'no-store')
+  async ticket(
+    @Param('id') id: string,
+    @Query('token') token?: string,
+  ): Promise<string> {
+    this.assertToken(token);
+    const clinic = await this.requireClinic();
+
+    const detail = await this.panel.openTicket(clinic.id, id);
+    if (!detail) {
+      throw new NotFoundException('Ticket not found');
+    }
+
+    return renderTicket(detail, this.env.panelToken!);
   }
 
   @Post('faq/:id')

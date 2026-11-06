@@ -202,7 +202,13 @@ export class TicketsRepository {
     tenantId: string,
     limit = 50,
   ): Promise<
-    Array<HumanTicket & { patientLabel: string | null; externalUserId: string }>
+    Array<
+      HumanTicket & {
+        patientLabel: string | null;
+        externalUserId: string;
+        unreadCount: number;
+      }
+    >
   > {
     const { rows } = await this.db.query(
       `select ${TICKET_COLUMNS},
@@ -211,14 +217,27 @@ export class TicketsRepository {
                   and pc.id = human_tickets.patient_contact_id) as "patientLabel",
               (select pc.external_user_id from patient_contacts pc
                 where pc.tenant_id = human_tickets.tenant_id
-                  and pc.id = human_tickets.patient_contact_id) as "externalUserId"
+                  and pc.id = human_tickets.patient_contact_id) as "externalUserId",
+              (select count(*)::int from messages m
+                join conversations c
+                  on c.tenant_id = m.tenant_id and c.id = m.conversation_id
+                where m.tenant_id = human_tickets.tenant_id
+                  and m.conversation_id = human_tickets.conversation_id
+                  and m.direction = 'in'
+                  and (c.panel_read_at is null or m.created_at > c.panel_read_at)) as "unreadCount"
        from human_tickets
        where tenant_id = $1 and status in ('open', 'notified', 'answered')
        order by sla_due_at
        limit $2`,
       [tenantId, limit],
     );
-    return rows as Array<HumanTicket & { patientLabel: string | null; externalUserId: string }>;
+    return rows as Array<
+      HumanTicket & {
+        patientLabel: string | null;
+        externalUserId: string;
+        unreadCount: number;
+      }
+    >;
   }
 
   /** The open ticket of a contact's current conversation, if any. */

@@ -1,5 +1,5 @@
 import { DateTime } from 'luxon';
-import { PanelData } from './panel.service';
+import { PanelData, TicketDetail } from './panel.service';
 
 const escape = (value: string): string =>
   value
@@ -124,10 +124,13 @@ const ticketRows = (data: PanelData, token: string): string => {
         .toFormat('dd/MM HH:mm');
       const state = ticket.acceptedAt ? 'assumido' : ticket.status;
       return `<tr>
-        <td class="mono">#${ticket.id.slice(0, 8)}</td>
+        <td class="mono">
+          <a href="/painel/tickets/${ticket.id}?token=${encodeURIComponent(token)}">#${ticket.id.slice(0, 8)}</a>
+        </td>
         <td>${escape(REASON[ticket.reason] ?? ticket.reason)}</td>
         <td>
           ${escape(ticket.patientLabel)}
+          ${ticket.unreadCount > 0 ? `<span class="badge unread">${ticket.unreadCount} nova(s)</span>` : ''}
           <div class="muted">${escape(ticket.question.slice(0, 120))}</div>
           <form class="reply" method="post" action="/painel/tickets/${ticket.id}/responder">
             <input type="hidden" name="token" value="${escape(token)}">
@@ -153,6 +156,106 @@ const ticketRows = (data: PanelData, token: string): string => {
     })
     .join('');
 };
+
+export function renderTicket(detail: TicketDetail, token: string): string {
+  const { ticket } = detail;
+  const deadline = DateTime.fromJSDate(ticket.slaDueAt)
+    .setZone(detail.timezone)
+    .toFormat('dd/MM HH:mm');
+
+  const messages = detail.messages
+    .map((message) => {
+      const time = DateTime.fromJSDate(message.createdAt)
+        .setZone(detail.timezone)
+        .toFormat('dd/MM HH:mm');
+      const side = message.direction === 'in' ? 'in' : 'out';
+      const who = message.direction === 'in' ? escape(detail.patientLabel) : 'clínica';
+      return `<li class="msg ${side}">
+        <div class="who">${who} · ${time}</div>
+        <div class="bubble">${escape(message.content ?? `[${message.messageType}]`)}</div>
+      </li>`;
+    })
+    .join('');
+
+  return `<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="30">
+<title>Ticket #${ticket.id.slice(0, 8)} — ${escape(detail.patientLabel)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.5 -apple-system, Segoe UI, Roboto, sans-serif; background:#f6f7f9; color:#111; }
+  header { padding:20px 24px; background:#0f172a; color:#fff; display:flex; justify-content:space-between; align-items:center; gap:16px; }
+  header h1 { margin:0; font-size:18px; }
+  header p { margin:4px 0 0; color:#94a3b8; font-size:13px; }
+  header a { color:#93c5fd; text-decoration:none; font-size:13px; }
+  main { padding:24px; max-width:900px; margin:0 auto; display:grid; gap:20px; }
+  section { background:#fff; border:1px solid #e5e7eb; border-radius:10px; padding:16px; }
+  .meta { display:flex; flex-wrap:wrap; gap:18px; font-size:13px; color:#475569; }
+  .meta b { color:#0f172a; }
+  ul.msgs { list-style:none; margin:0; padding:0; display:grid; gap:12px; }
+  .msg .who { font-size:12px; color:#64748b; margin-bottom:4px; }
+  .msg .bubble { padding:10px 14px; border-radius:12px; background:#f1f5f9; display:inline-block; max-width:80%; white-space:pre-wrap; }
+  .msg.out { text-align:right; }
+  .msg.out .bubble { background:#dbeafe; color:#1e3a8a; }
+  form.reply { display:flex; gap:8px; margin-top:16px; }
+  form.reply input { flex:1; font:inherit; padding:10px 12px; border:1px solid #d1d5db; border-radius:8px; }
+  button { font:inherit; padding:9px 14px; border-radius:8px; border:1px solid #1d4ed8; background:#1d4ed8; color:#fff; cursor:pointer; }
+  button.ghost { background:#fff; color:#1d4ed8; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  .actions { display:flex; gap:8px; margin-top:12px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; background:#e2e8f0; color:#334155; }
+  .badge.assumido, .badge.answered { background:#dbeafe; color:#1e40af; }
+  .badge.unread { background:#dc2626; color:#fff; margin-left:6px; }
+  .empty { color:#94a3b8; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Ticket #${ticket.id.slice(0, 8)} — ${escape(detail.patientLabel)}</h1>
+    <p>${escape(ticket.summary)}</p>
+  </div>
+  <a href="/painel?token=${encodeURIComponent(token)}">← voltar ao painel</a>
+</header>
+<main>
+  <section>
+    <div class="meta">
+      <span>Motivo: <b>${escape(ticket.reason)}</b></span>
+      <span>Situação: <b>${escape(ticket.acceptedAt ? 'assumido' : ticket.status)}</b></span>
+      <span>SLA: <b>${deadline}</b></span>
+      <span>Pedido original: <b>${escape(ticket.question.slice(0, 140))}</b></span>
+    </div>
+  </section>
+
+  <section>
+    <ul class="msgs">
+      ${messages || '<li class="empty">Sem mensagens.</li>'}
+    </ul>
+
+    <form class="reply" method="post" action="/painel/tickets/${ticket.id}/responder">
+      <input type="hidden" name="token" value="${escape(token)}">
+      <input name="answer" placeholder="responder ao paciente…" required autocomplete="off">
+      <button type="submit">enviar</button>
+    </form>
+
+    <div class="actions">
+      <form method="post" action="/painel/tickets/${ticket.id}/assumir">
+        <input type="hidden" name="token" value="${escape(token)}">
+        <button type="submit"${ticket.acceptedAt ? ' disabled' : ''}>assumir</button>
+      </form>
+      <form method="post" action="/painel/tickets/${ticket.id}/encerrar">
+        <input type="hidden" name="token" value="${escape(token)}">
+        <button type="submit" class="ghost">encerrar</button>
+      </form>
+    </div>
+  </section>
+</main>
+</body>
+</html>`;
+}
 
 export function renderPanel(data: PanelData, token: string): string {
   const previous = shiftDay(data.dateISO, -1, data.timezone);
@@ -190,6 +293,7 @@ export function renderPanel(data: PanelData, token: string): string {
   .badge.confirmed, .badge.attended { background:#dcfce7; color:#166534; }
   .badge.no_show { background:#fee2e2; color:#991b1b; }
   .badge.assumido, .badge.answered { background:#dbeafe; color:#1e40af; }
+  .badge.unread { background:#dc2626; color:#fff; margin-left:6px; }
   .badge.pending { background:#fef3c7; color:#92400e; }
   nav { display:flex; gap:8px; }
   nav a { color:#1d4ed8; text-decoration:none; font-size:13px; padding:4px 10px; border:1px solid #dbeafe; border-radius:6px; }

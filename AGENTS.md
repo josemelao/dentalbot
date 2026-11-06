@@ -138,3 +138,7 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   same repositories as the bot, so audit and validation stay in one place.
 - Editing a FAQ answer changes exactly what the bot says to patients: only
   `approved` entries are used, and the answer is sent verbatim.
+- Opening a ticket marks the operator side as read (`panel_read_at`). This is not
+  a read receipt for the patient and must never be shown as one.
+- Panel actions reuse the same services as the Telegram commands, so behaviour
+  and audit never diverge between the two entry points.

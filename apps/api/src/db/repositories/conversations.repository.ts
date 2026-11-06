@@ -66,6 +66,19 @@ export class ConversationsRepository {
     );
   }
 
+  /** Marks the conversation as read in the panel (operator side only). */
+  async markPanelRead(
+    tenantId: string,
+    conversationId: string,
+    at: Date,
+  ): Promise<void> {
+    await this.db.query(
+      `update conversations set panel_read_at = $3
+       where tenant_id = $1 and id = $2`,
+      [tenantId, conversationId, at],
+    );
+  }
+
   async updateContext(
     tenantId: string,
     conversationId: string,

@@ -146,6 +146,14 @@ http://localhost:3000/painel?token=<PANEL_TOKEN>
 It shows the day agenda, the open tickets, the approved FAQ and the service
 prices. FAQ answers and service price/duration/status are editable in place.
 
+Clicking a ticket opens the full conversation, so the operator sees everything
+the patient wrote — not only the message that created the ticket. Opening it
+clears the unread badge (`conversations.panel_read_at`).
+
+From a ticket you can reply, assume and close. The reply goes through the same
+`EscalationService.reply` used by the Telegram commands, so the audit trail is
+identical.
+
 `PANEL_TOKEN` is a **shared secret, not authentication**. It exists to make the
 pilot usable before the real inbox with login arrives. Without `PANEL_TOKEN` the
 panel returns 404.
