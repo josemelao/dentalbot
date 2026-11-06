@@ -19,7 +19,7 @@ describe('worker', () => {
       calendar: new FakeCalendarAdapter(),
     });
 
-    expect(jobs.map((job) => job.name)).toEqual(['sla', 'reminders', 'reconcile']);
+    expect(jobs.map((job) => job.name)).toEqual(['sla', 'reminders', 'idle', 'reconcile']);
   });
 
   it('runs a job only once while the advisory lock is held', async () => {

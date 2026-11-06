@@ -131,6 +131,55 @@ export class EscalationService {
     return ticket;
   }
 
+  /** Warns the owners that an accepted ticket is waiting without a reply. */
+  async notifyIdle(
+    ticket: HumanTicket,
+    minutes: number,
+  ): Promise<{ deliveredTo: string[] }> {
+    const recipients = await this.deps.channels.listOwnerRecipients(
+      ticket.tenantId,
+      this.deps.ownerChannel,
+    );
+    if (recipients.length === 0) return { deliveredTo: [] };
+
+    const contact = await this.deps.patients.findContactById(
+      ticket.tenantId,
+      ticket.patientContactId,
+    );
+    const patientLabel = formatPatientLabel(contact?.displayName, contact?.externalUserId ?? '');
+
+    const text = [
+      `[TICKET #${ticket.id.slice(0, 8)}] ${patientLabel}`,
+      `Assumido há ${minutes} min sem resposta — o paciente está esperando.`,
+      'Responda 1/2/3 ou use o painel.',
+    ].join('\n');
+
+    const { deliveredTo } = await this.deps.notifier.notify(
+      { ticket, patientLabel, text },
+      recipients,
+    );
+
+    if (deliveredTo.length > 0) {
+      await this.deps.tickets.addEvent({
+        tenantId: ticket.tenantId,
+        ticketId: ticket.id,
+        event: 'idle_alert',
+        actorType: 'bot',
+        metadata: { minutes },
+      });
+      await this.deps.audit.append({
+        tenantId: ticket.tenantId,
+        actorType: 'bot',
+        action: 'ticket_idle_alert',
+        entityType: 'human_ticket',
+        entityId: ticket.id,
+        metadata: { minutes },
+      });
+    }
+
+    return { deliveredTo };
+  }
+
   /** Re-sends the card for an already-open ticket (used when an owner is linked later). */
   async renotify(ticket: HumanTicket): Promise<{ deliveredTo: string[] }> {
     const recipients = await this.deps.channels.listOwnerRecipients(

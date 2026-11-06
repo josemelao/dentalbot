@@ -11,7 +11,8 @@ export type TicketEvent =
   | 'answered'
   | 'resolved'
   | 'fallback'
-  | 'reclassified';
+  | 'reclassified'
+  | 'idle_alert';
 export type KnowledgeStatus = 'draft' | 'approved' | 'retired';
 
 export interface Clinic {

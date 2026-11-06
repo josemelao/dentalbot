@@ -38,6 +38,7 @@ const EnvSchema = z
     TYPING_MAX_MS: z.coerce.number().int().min(0).default(2500),
     LOG_LEVEL: z.string().default('info'),
     SLA_MINUTES: z.coerce.number().int().positive().default(15),
+    IDLE_ASSUMED_MINUTES: z.coerce.number().int().positive().default(30),
     WORKER_INTERVAL_MS: z.coerce.number().int().positive().default(60_000),
     REMINDER_MIN_LEAD_HOURS: z.coerce.number().int().positive().default(20),
     REMINDER_MAX_LEAD_HOURS: z.coerce.number().int().positive().default(28),
@@ -89,6 +90,7 @@ export interface AppEnv {
   typingMaxMs: number;
   logLevel: string;
   slaMinutes: number;
+  idleAssumedMinutes: number;
   workerIntervalMs: number;
   reminderMinLeadHours: number;
   reminderMaxLeadHours: number;
@@ -127,6 +129,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     typingMaxMs: env.TYPING_MAX_MS,
     logLevel: env.LOG_LEVEL,
     slaMinutes: env.SLA_MINUTES,
+    idleAssumedMinutes: env.IDLE_ASSUMED_MINUTES,
     workerIntervalMs: env.WORKER_INTERVAL_MS,
     reminderMinLeadHours: env.REMINDER_MIN_LEAD_HOURS,
     reminderMaxLeadHours: env.REMINDER_MAX_LEAD_HOURS,

@@ -1,10 +1,12 @@
 import { Pool } from 'pg';
 import { CalendarAdapter } from '../calendar/calendar-adapter';
 import { ChannelAdapter } from '../channels/channel-adapter';
+import { ChannelOwnerNotifier } from '../channels/owner-notifier';
 import { AppEnv } from '../config/env';
 import { AppointmentsRepository } from '../db/repositories/appointments.repository';
 import { AuditRepository } from '../db/repositories/audit.repository';
 import { CatalogRepository } from '../db/repositories/catalog.repository';
+import { ChannelsRepository } from '../db/repositories/channels.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
 import { LocksRepository } from '../db/repositories/locks.repository';
 import { MessagesRepository } from '../db/repositories/messages.repository';
@@ -13,6 +15,8 @@ import { PatientsRepository } from '../db/repositories/patients.repository';
 import { RemindersRepository } from '../db/repositories/reminders.repository';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { SlaService } from '../pipeline/sla.service';
+import { IdleTicketService } from '../pipeline/idle-ticket.service';
+import { EscalationService } from '../pipeline/escalation.service';
 import { ReconciliationService } from '../scheduling/reconciliation.service';
 import { ReminderService } from '../scheduling/reminder.service';
 
@@ -75,6 +79,24 @@ export function buildJobs(options: BuildJobsOptions): WorkerJob[] {
     calendar,
   });
 
+  const idleTickets = new IdleTicketService({
+    tickets,
+    escalation: new EscalationService({
+      tickets,
+      channels: new ChannelsRepository(pool),
+      conversations,
+      patients,
+      messages,
+      audit,
+      notifier: new ChannelOwnerNotifier(channel),
+      ownerChannel: 'telegram',
+      channel,
+      slaMinutes: env.slaMinutes,
+    }),
+    now,
+    idleMinutes: env.idleAssumedMinutes,
+  });
+
   const activeClinics = async (): Promise<string[]> => {
     const { rows } = await pool.query<{ id: string }>(
       `select id from clinics where status = 'active' order by name`,
@@ -109,6 +131,19 @@ export function buildJobs(options: BuildJobsOptions): WorkerJob[] {
           skipped += result.skipped;
         }
         return { sent, failed, skipped };
+      },
+    },
+    {
+      name: 'idle',
+      run: async () => {
+        let idle = 0;
+        let alerted = 0;
+        for (const tenantId of await activeClinics()) {
+          const result = await idleTickets.sweepTenant(tenantId);
+          idle += result.idle;
+          alerted += result.alerted;
+        }
+        return { idle, alerted };
       },
     },
     {

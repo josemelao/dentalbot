@@ -240,6 +240,35 @@ export class TicketsRepository {
     >;
   }
 
+  /** Accepted tickets with no human reply since the takeover. */
+  async listIdleAccepted(tenantId: string, acceptedBefore: Date): Promise<HumanTicket[]> {
+    const { rows } = await this.db.query(
+      `select ${TICKET_COLUMNS}
+       from human_tickets
+       where tenant_id = $1
+         and status in ('open', 'notified', 'answered')
+         and accepted_at is not null
+         and accepted_at <= $2
+         and not exists (
+           select 1 from messages m
+           where m.tenant_id = human_tickets.tenant_id
+             and m.conversation_id = human_tickets.conversation_id
+             and m.direction = 'out'
+             and m.created_at > human_tickets.accepted_at
+         )
+         and not exists (
+           select 1 from ticket_events e
+           where e.tenant_id = human_tickets.tenant_id
+             and e.ticket_id = human_tickets.id
+             and e.event = 'idle_alert'
+             and e.created_at > human_tickets.accepted_at
+         )
+       order by accepted_at`,
+      [tenantId, acceptedBefore],
+    );
+    return rows as HumanTicket[];
+  }
+
   /** The open ticket of a contact's current conversation, if any. */
   async findOpenByContact(tenantId: string, contactId: string): Promise<HumanTicket | null> {
     const { rows } = await this.db.query(

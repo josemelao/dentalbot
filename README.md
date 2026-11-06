@@ -269,6 +269,7 @@ under a Postgres advisory lock, so it is safe to start more than one:
 |---|---|
 | `sla` | sends the fallback for overdue, unaccepted tickets |
 | `reminders` | sends the 24h reminder and records it |
+| `idle` | warns the owners when an accepted ticket has no reply for `IDLE_ASSUMED_MINUTES` |
 | `reconcile` | releases expired locks, reconciles `UNKNOWN` operations |
 
 The reminder is eligible when the appointment starts between

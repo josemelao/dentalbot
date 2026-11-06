@@ -88,6 +88,8 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   `UNKNOWN`. A weaker signal never downgrades a ticket.
 - If nobody accepts by `sla_due_at`, the patient receives the SLA fallback. Never
   leave a patient without a reply or a fallback.
+- Accepting a ticket disables the patient-facing fallback, so the idle job must
+  warn the owners when an accepted ticket has no human reply.
 
 ## Owner channel invariants
 
