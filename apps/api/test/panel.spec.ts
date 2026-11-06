@@ -37,6 +37,8 @@ describe('panel', () => {
     expect(response.text).toContain('Maria');
     expect(response.text).toContain('Tickets abertos');
     expect(response.text).toContain('Estou com dor');
+    expect(response.text).toContain('propor remarcação');
+    expect(response.text).toContain('pedir confirmação');
 
     await app.close();
   });
