@@ -126,6 +126,9 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
 
 - Wording may vary; **facts may not**. FAQ answers stay verbatim from the approved
   entry, and the emergency protocol is a single fixed string that never varies.
+- Message copy is editable from the panel, except the **locked** keys
+  (`emergency_protocol`, `holding_escalated`). A locked key is ignored on write,
+  never trusted from the request.
 - The unknown router returns a **route**, never a patient-facing sentence. An FAQ
   route must point at an approved, in-force entry of that tenant, validated in
   code. Low confidence means `HUMAN`.

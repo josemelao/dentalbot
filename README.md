@@ -178,6 +178,22 @@ agenda 09/11
 agenda sexta
 ```
 
+## Message templates
+
+The bot's copy lives in `message_templates` (one row per key, several variants per
+row). The panel edits it; the running instance picks the change immediately.
+
+```
+Mensagens do bot
+  Saudação                 [ 2 variantes ]  [salvar]
+  Agendamento — oferecer   [ 3 variantes ]  [salvar]
+  Protocolo de emergência  🔒 travada
+```
+
+Placeholders (`{{service}}`, `{{slots}}`, `{{when}}`, `{{sla}}`, `{{services}}`)
+are filled by the system. **Locked keys** — emergency protocol and the SLA
+holding message — are shown read-only and ignored on write.
+
 ## Phase 2 boundaries
 
 - Scheduling, rescheduling and cancellation are implemented against the internal
