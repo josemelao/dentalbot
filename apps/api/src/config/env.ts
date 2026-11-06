@@ -31,6 +31,7 @@ const EnvSchema = z
       .enum(['true', 'false'])
       .default('true')
       .transform((value) => value === 'true'),
+    PANEL_TOKEN: optionalString(z.string().min(1)),
     TYPING_MIN_MS: z.coerce.number().int().min(0).default(400),
     TYPING_PER_CHAR_MS: z.coerce.number().int().min(0).default(25),
     TYPING_MAX_MS: z.coerce.number().int().min(0).default(2500),
@@ -80,6 +81,7 @@ export interface AppEnv {
   geminiModel: string;
   routerConfidenceThreshold: number;
   messageEmoji: boolean;
+  panelToken: string | null;
   typingMinMs: number;
   typingPerCharMs: number;
   typingMaxMs: number;
@@ -116,6 +118,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): AppEnv {
     geminiModel: env.GEMINI_MODEL,
     routerConfidenceThreshold: env.ROUTER_CONFIDENCE_THRESHOLD,
     messageEmoji: env.MESSAGE_EMOJI,
+    panelToken: env.PANEL_TOKEN ?? null,
     typingMinMs: env.TYPING_MIN_MS,
     typingPerCharMs: env.TYPING_PER_CHAR_MS,
     typingMaxMs: env.TYPING_MAX_MS,

@@ -197,6 +197,30 @@ export class TicketsRepository {
     );
   }
 
+  /** Open tickets for the panel, oldest SLA first. */
+  async listOpen(
+    tenantId: string,
+    limit = 50,
+  ): Promise<
+    Array<HumanTicket & { patientLabel: string | null; externalUserId: string }>
+  > {
+    const { rows } = await this.db.query(
+      `select ${TICKET_COLUMNS},
+              (select pc.display_name from patient_contacts pc
+                where pc.tenant_id = human_tickets.tenant_id
+                  and pc.id = human_tickets.patient_contact_id) as "patientLabel",
+              (select pc.external_user_id from patient_contacts pc
+                where pc.tenant_id = human_tickets.tenant_id
+                  and pc.id = human_tickets.patient_contact_id) as "externalUserId"
+       from human_tickets
+       where tenant_id = $1 and status in ('open', 'notified', 'answered')
+       order by sla_due_at
+       limit $2`,
+      [tenantId, limit],
+    );
+    return rows as Array<HumanTicket & { patientLabel: string | null; externalUserId: string }>;
+  }
+
   /** The open ticket of a contact's current conversation, if any. */
   async findOpenByContact(tenantId: string, contactId: string): Promise<HumanTicket | null> {
     const { rows } = await this.db.query(

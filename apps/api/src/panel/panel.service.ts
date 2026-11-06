@@ -1,0 +1,86 @@
+import { Pool } from 'pg';
+import { DateTime } from 'luxon';
+import { CatalogRepository } from '../db/repositories/catalog.repository';
+import { KnowledgeRepository } from '../db/repositories/knowledge.repository';
+import { KnowledgeEntry, Service } from '../db/repositories/rows';
+import { TicketsRepository } from '../db/repositories/tickets.repository';
+import { AttendanceService, DayRow } from '../scheduling/attendance.service';
+
+export interface PanelTicket {
+  id: string;
+  reason: string;
+  status: string;
+  summary: string;
+  question: string;
+  slaDueAt: Date;
+  patientLabel: string;
+  acceptedAt: Date | null;
+}
+
+export interface PanelData {
+  clinicName: string;
+  timezone: string;
+  dateISO: string;
+  agenda: DayRow[];
+  tickets: PanelTicket[];
+  knowledge: KnowledgeEntry[];
+  services: Service[];
+}
+
+export interface PanelServiceDependencies {
+  pool: Pool;
+  attendance: AttendanceService;
+  tickets: TicketsRepository;
+  knowledge: KnowledgeRepository;
+  catalog: CatalogRepository;
+}
+
+/** Read-only view model for the pilot panel. No writes live here yet. */
+export class PanelService {
+  constructor(private readonly deps: PanelServiceDependencies) {}
+
+  async activeClinic(): Promise<{ id: string; name: string; timezone: string } | null> {
+    const clinics = await this.deps.pool.query<{
+      id: string;
+      name: string;
+      timezone: string;
+    }>(
+      `select id, name, timezone from clinics where status = 'active'
+       order by created_at limit 1`,
+    );
+    return clinics.rows[0] ?? null;
+  }
+
+  async load(dateISO?: string): Promise<PanelData | null> {
+    const clinic = await this.activeClinic();
+    if (!clinic) return null;
+
+    const date = dateISO ?? DateTime.now().setZone(clinic.timezone).toISODate() ?? '';
+
+    const [agenda, tickets, knowledge, services] = await Promise.all([
+      this.deps.attendance.listDay(clinic.id, date),
+      this.deps.tickets.listOpen(clinic.id),
+      this.deps.knowledge.listAll(clinic.id),
+      this.deps.catalog.listAllServices(clinic.id),
+    ]);
+
+    return {
+      clinicName: clinic.name,
+      timezone: clinic.timezone,
+      dateISO: date,
+      agenda,
+      knowledge,
+      services,
+      tickets: tickets.map((ticket) => ({
+        id: ticket.id,
+        reason: ticket.reason,
+        status: ticket.status,
+        summary: ticket.summary,
+        question: ticket.question,
+        slaDueAt: ticket.slaDueAt,
+        patientLabel: ticket.patientLabel?.trim() || `contato •••${ticket.externalUserId.slice(-4)}`,
+        acceptedAt: ticket.acceptedAt,
+      })),
+    };
+  }
+}

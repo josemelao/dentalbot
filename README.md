@@ -134,6 +134,31 @@ tenant; low confidence means `HUMAN`; an invalid answer from the model falls bac
 to the clarify path. Without `AI_PROVIDER`, the router is disabled and behaviour
 is unchanged.
 
+## Pilot panel
+
+A read-only-then-editable panel is served by the API itself, so the clinic has a
+screen today without a second app:
+
+```
+http://localhost:3000/painel?token=<PANEL_TOKEN>
+```
+
+It shows the day agenda, the open tickets, the approved FAQ and the service
+prices. FAQ answers and service price/duration/status are editable in place.
+
+`PANEL_TOKEN` is a **shared secret, not authentication**. It exists to make the
+pilot usable before the real inbox with login arrives. Without `PANEL_TOKEN` the
+panel returns 404.
+
+The doctors can also see the agenda from Telegram, without opening anything:
+
+```
+4                # agenda de hoje
+agenda amanhã
+agenda 09/11
+agenda sexta
+```
+
 ## Phase 2 boundaries
 
 - Scheduling, rescheduling and cancellation are implemented against the internal

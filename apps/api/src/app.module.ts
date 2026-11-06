@@ -36,6 +36,8 @@ import { TicketsRepository } from './db/repositories/tickets.repository';
 import { WebhookEventsRepository } from './db/repositories/webhook-events.repository';
 import { DB_POOL, ENV } from './db/tokens';
 import { HealthController } from './health/health.controller';
+import { PanelController } from './panel/panel.controller';
+import { PanelService } from './panel/panel.service';
 import { AvailabilityService } from './scheduling/availability.service';
 import { AttendanceService } from './scheduling/attendance.service';
 import { BookingService } from './scheduling/booking.service';
@@ -97,7 +99,7 @@ export class AppModule {
 
     return {
       module: AppModule,
-      controllers: [HealthController, TelegramWebhookController],
+      controllers: [HealthController, PanelController, TelegramWebhookController],
       providers: [
         { provide: ENV, useValue: options.env },
         {
@@ -320,6 +322,23 @@ export class AppModule {
             CatalogRepository,
             PatientsRepository,
             AuditRepository,
+          ],
+        },
+        {
+          provide: PanelService,
+          useFactory: (
+            pool: Pool,
+            attendance: AttendanceService,
+            tickets: TicketsRepository,
+            knowledge: KnowledgeRepository,
+            catalog: CatalogRepository,
+          ) => new PanelService({ pool, attendance, tickets, knowledge, catalog }),
+          inject: [
+            DB_POOL,
+            AttendanceService,
+            TicketsRepository,
+            KnowledgeRepository,
+            CatalogRepository,
           ],
         },
         {

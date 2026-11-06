@@ -5,3 +5,4 @@ process.env.DATABASE_URL =
 process.env.TELEGRAM_WEBHOOK_SECRET = 'test-secret';
 process.env.AI_PROVIDER = 'fake';
 process.env.LOG_LEVEL = 'error';
+process.env.PANEL_TOKEN = 'test-panel';

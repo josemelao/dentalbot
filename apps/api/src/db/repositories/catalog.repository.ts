@@ -40,6 +40,42 @@ export class CatalogRepository {
     return (rows[0] as Service | undefined) ?? null;
   }
 
+  async updateServicePricing(
+    tenantId: string,
+    serviceId: string,
+    input: {
+      durationMinutes: number;
+      price: number;
+      priceDisclosureAllowed: boolean;
+      status: 'active' | 'inactive';
+    },
+  ): Promise<void> {
+    await this.db.query(
+      `update services
+       set duration_minutes = $3, price = $4, price_disclosure_allowed = $5,
+           status = $6, updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [
+        tenantId,
+        serviceId,
+        input.durationMinutes,
+        input.price,
+        input.priceDisclosureAllowed,
+        input.status,
+      ],
+    );
+  }
+
+  async listAllServices(tenantId: string): Promise<Service[]> {
+    const { rows } = await this.db.query(
+      `select ${SERVICE_COLUMNS} from services
+       where tenant_id = $1
+       order by name`,
+      [tenantId],
+    );
+    return rows as Service[];
+  }
+
   async listActiveServices(tenantId: string): Promise<Service[]> {
     const { rows } = await this.db.query(
       `select ${SERVICE_COLUMNS} from services
