@@ -28,6 +28,9 @@ describe('calendar free/busy', () => {
     const pool = getTestPool();
     const clinic = await seedClinic(pool, { withConversation: true });
     const scheduling = await seedScheduling(pool, clinic.tenantId);
+    await pool.query(`update professionals set calendar_id = 'caio@example.com' where id = $1`, [
+      scheduling.caioId,
+    ]);
     const calendar = new FakeCalendarAdapter();
     const availability = build(pool, calendar);
 

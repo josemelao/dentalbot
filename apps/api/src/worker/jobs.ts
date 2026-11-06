@@ -17,6 +17,7 @@ import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { SlaService } from '../pipeline/sla.service';
 import { IdleTicketService } from '../pipeline/idle-ticket.service';
 import { EscalationService } from '../pipeline/escalation.service';
+import { CalendarSyncService } from '../scheduling/calendar-sync.service';
 import { ReconciliationService } from '../scheduling/reconciliation.service';
 import { ReminderService } from '../scheduling/reminder.service';
 
@@ -79,22 +80,33 @@ export function buildJobs(options: BuildJobsOptions): WorkerJob[] {
     calendar,
   });
 
+  const escalation = new EscalationService({
+    tickets,
+    channels: new ChannelsRepository(pool),
+    conversations,
+    patients,
+    messages,
+    audit,
+    notifier: new ChannelOwnerNotifier(channel),
+    ownerChannel: 'telegram',
+    channel,
+    slaMinutes: env.slaMinutes,
+  });
+
   const idleTickets = new IdleTicketService({
     tickets,
-    escalation: new EscalationService({
-      tickets,
-      channels: new ChannelsRepository(pool),
-      conversations,
-      patients,
-      messages,
-      audit,
-      notifier: new ChannelOwnerNotifier(channel),
-      ownerChannel: 'telegram',
-      channel,
-      slaMinutes: env.slaMinutes,
-    }),
+    escalation,
     now,
     idleMinutes: env.idleAssumedMinutes,
+  });
+
+  const calendarSync = new CalendarSyncService({
+    appointments,
+    escalation,
+    audit,
+    calendar,
+    now,
+    horizonDays: 7,
   });
 
   const activeClinics = async (): Promise<string[]> => {
@@ -144,6 +156,21 @@ export function buildJobs(options: BuildJobsOptions): WorkerJob[] {
           alerted += result.alerted;
         }
         return { idle, alerted };
+      },
+    },
+    {
+      name: 'calendar',
+      run: async () => {
+        let missing = 0;
+        let moved = 0;
+        let checked = 0;
+        for (const tenantId of await activeClinics()) {
+          const result = await calendarSync.syncTenant(tenantId);
+          checked += result.checked;
+          missing += result.missing;
+          moved += result.moved;
+        }
+        return { checked, missing, moved };
       },
     },
     {

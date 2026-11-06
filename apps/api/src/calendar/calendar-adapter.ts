@@ -23,6 +23,6 @@ export interface CalendarAdapter {
   createEvent(event: CalendarEvent): Promise<{ externalEventId: string }>;
   getEvent(externalEventId: string): Promise<CalendarEventLookup>;
   cancelEvent(externalEventId: string): Promise<void>;
-  /** Busy blocks from the doctor's own calendar (personal events included). */
-  isBusy?(from: Date, to: Date): Promise<BusyBlock[]>;
+  /** Busy blocks from a doctor's calendar (personal events included). */
+  isBusy?(from: Date, to: Date, calendarId?: string): Promise<BusyBlock[]>;
 }

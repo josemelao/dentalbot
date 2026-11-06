@@ -90,14 +90,15 @@ export class GoogleCalendarAdapter implements CalendarAdapter {
    * Free/busy returns only busy blocks, never titles: the bot learns that a
    * time is taken, not what the doctor is doing.
    */
-  async isBusy(from: Date, to: Date): Promise<BusyBlock[]> {
+  async isBusy(from: Date, to: Date, calendarId?: string): Promise<BusyBlock[]> {
+    const target = calendarId ?? this.options.calendarId;
     const response = await this.fetchImpl(`${this.baseUrl}/freeBusy`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
         timeMin: from.toISOString(),
         timeMax: to.toISOString(),
-        items: [{ id: this.options.calendarId }],
+        items: [{ id: target }],
       }),
     });
 
@@ -108,7 +109,7 @@ export class GoogleCalendarAdapter implements CalendarAdapter {
     const body = (await response.json()) as {
       calendars?: Record<string, { busy?: Array<{ start?: string; end?: string }> }>;
     };
-    const busy = body.calendars?.[this.options.calendarId]?.busy ?? [];
+    const busy = body.calendars?.[target]?.busy ?? [];
 
     return busy
       .filter((block) => block.start && block.end)

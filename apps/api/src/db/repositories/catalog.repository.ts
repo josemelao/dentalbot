@@ -200,6 +200,19 @@ export class CatalogRepository {
     );
   }
 
+  async listProfessionalCalendars(
+    tenantId: string,
+    professionalIds: string[],
+  ): Promise<Array<{ id: string; calendarId: string | null }>> {
+    if (professionalIds.length === 0) return [];
+    const { rows } = await this.db.query(
+      `select id, calendar_id as "calendarId" from professionals
+       where tenant_id = $1 and id = any($2::uuid[])`,
+      [tenantId, professionalIds],
+    );
+    return rows as Array<{ id: string; calendarId: string | null }>;
+  }
+
   async listAllWorkingHours(tenantId: string): Promise<
     Array<{
       id: string;

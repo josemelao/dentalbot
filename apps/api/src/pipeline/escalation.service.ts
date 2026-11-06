@@ -10,6 +10,15 @@ import { HumanTicket, TicketReason } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { formatPatientLabel, formatTicketCard } from './ticket-card';
 
+const formatTicketWhen = (when: Date): string =>
+  new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(when);
+
 export interface EscalationDependencies {
   tickets: TicketsRepository;
   channels: ChannelsRepository;
@@ -176,6 +185,59 @@ export class EscalationService {
         metadata: { minutes },
       });
     }
+
+    return { deliveredTo };
+  }
+
+  /** Warns the owners that an appointment disappeared from their own calendar. */
+  async notifyCalendarChange(input: {
+    tenantId: string;
+    patientContactId: string;
+    when: Date;
+    reason: 'DELETED' | 'MOVED';
+  }): Promise<{ deliveredTo: string[] }> {
+    const recipients = await this.deps.channels.listOwnerRecipients(
+      input.tenantId,
+      this.deps.ownerChannel,
+    );
+    if (recipients.length === 0) return { deliveredTo: [] };
+
+    const contact = await this.deps.patients.findContactById(
+      input.tenantId,
+      input.patientContactId,
+    );
+    const patientLabel = formatPatientLabel(contact?.displayName, contact?.externalUserId ?? '');
+
+    const text = [
+      `[AGENDA] ${patientLabel} — ${formatTicketWhen(input.when)}`,
+      input.reason === 'DELETED'
+        ? 'O evento foi removido no Google. O horário está em risco e precisa ser remarcado.'
+        : 'O evento foi movido no Google. O horário está em risco e precisa ser remarcado.',
+      'Abra o painel e use "propor remarcação" quando quiser falar com o paciente.',
+    ].join('\n');
+
+    const { deliveredTo } = await this.deps.notifier.notify(
+      {
+        ticket: {
+          id: 'calendar',
+          tenantId: input.tenantId,
+          conversationId: '',
+          patientContactId: input.patientContactId,
+          status: 'open',
+          reason: 'UNKNOWN',
+          summary: '',
+          question: '',
+          options: [],
+          answer: null,
+          slaDueAt: input.when,
+          acceptedAt: null,
+          acceptedBy: null,
+        },
+        patientLabel,
+        text,
+      },
+      recipients,
+    );
 
     return { deliveredTo };
   }

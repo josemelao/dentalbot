@@ -17,6 +17,8 @@ import { TelegramAdapter } from './channels/telegram/telegram.adapter';
 import { TelegramWebhookController } from './channels/telegram/telegram.webhook.controller';
 import { CalendarAdapter } from './calendar/calendar-adapter';
 import { FakeCalendarAdapter } from './calendar/fake-calendar.adapter';
+import { GoogleCalendarAdapter } from './calendar/google-calendar.adapter';
+import { GoogleServiceAccountToken } from './calendar/google-service-account';
 import { CALENDAR_ADAPTER } from './calendar/tokens';
 import { AppEnv } from './config/env';
 import { configureMessageStyle } from './common/message-style';
@@ -97,9 +99,21 @@ export class AppModule {
       (options.env.channelTransport === 'fake'
         ? new NoopOwnerNotifier()
         : new ChannelOwnerNotifier(channelAdapter));
+    const googleToken =
+      options.env.googleServiceAccountJson && options.env.googleClinicCalendarId
+        ? new GoogleServiceAccountToken({ keyPath: options.env.googleServiceAccountJson })
+        : null;
+
     const calendarAdapter =
       options.calendarAdapter ??
-      (options.env.nodeEnv === 'production' ? null : new FakeCalendarAdapter());
+      (googleToken && options.env.googleClinicCalendarId
+        ? new GoogleCalendarAdapter({
+            calendarId: options.env.googleClinicCalendarId,
+            getAccessToken: () => googleToken.getAccessToken(),
+          })
+        : options.env.nodeEnv === 'production'
+          ? null
+          : new FakeCalendarAdapter());
     if (!calendarAdapter) {
       throw new Error(
         'Calendar adapter is not configured for production; refusing to use the fake adapter',

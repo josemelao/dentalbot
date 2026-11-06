@@ -45,7 +45,7 @@ export class FakeCalendarAdapter implements CalendarAdapter {
   }
 
   /** Simulates the doctor's personal events. */
-  async isBusy(from: Date, to: Date): Promise<BusyBlock[]> {
+  async isBusy(from: Date, to: Date, _calendarId?: string): Promise<BusyBlock[]> {
     return this.busy.filter((block) => block.startAt < to && block.endAt > from);
   }
 

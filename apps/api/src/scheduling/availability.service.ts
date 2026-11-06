@@ -111,21 +111,37 @@ export class AvailabilityService {
     return this.removeCalendarBusy(slots, request);
   }
 
-  /** Drops slots that collide with the doctor's own calendar (personal events). */
+  /** Drops slots that collide with any required professional's own calendar. */
   private async removeCalendarBusy(slots: Slot[], request: SlotRequest): Promise<Slot[]> {
     if (!this.calendar?.isBusy) return slots;
 
-    let busy;
-    try {
-      busy = await this.calendar.isBusy(request.from, request.to);
-    } catch {
-      // A calendar outage must not block booking on the internal agenda.
-      return slots;
-    }
+    const professionals = await this.catalog.listProfessionalCalendars(
+      request.tenantId,
+      [...new Set(slots.flatMap((slot) => slot.professionalIds))],
+    );
 
-    if (busy.length === 0) return slots;
-    return slots.filter(
-      (slot) => !busy.some((block) => slot.startAt < block.endAt && slot.endAt > block.startAt),
+    const busyByProfessional = new Map<string, Array<{ startAt: Date; endAt: Date }>>();
+    await Promise.all(
+      professionals.map(async (professional) => {
+        if (!professional.calendarId) return;
+        try {
+          busyByProfessional.set(
+            professional.id,
+            await this.calendar!.isBusy!(request.from, request.to, professional.calendarId),
+          );
+        } catch {
+          // A calendar outage must not block booking on the internal agenda.
+        }
+      }),
+    );
+
+    if (busyByProfessional.size === 0) return slots;
+
+    return slots.filter((slot) =>
+      slot.professionalIds.every((professionalId) => {
+        const busy = busyByProfessional.get(professionalId) ?? [];
+        return !busy.some((block) => slot.startAt < block.endAt && slot.endAt > block.startAt);
+      }),
     );
   }
 }

@@ -4,6 +4,8 @@ coverage/
 .env
 .env.*
 !.env.example
+.secrets
+secrets/
 .superpowers/
 .worktrees/
 worktrees/

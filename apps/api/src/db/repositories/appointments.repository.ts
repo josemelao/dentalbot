@@ -226,6 +226,25 @@ export class AppointmentsRepository {
     );
   }
 
+  /** Upcoming appointments that were mirrored to an external calendar. */
+  async listUpcomingWithEvent(
+    tenantId: string,
+    from: Date,
+    to: Date,
+  ): Promise<Appointment[]> {
+    const { rows } = await this.pool.query(
+      `select ${APPOINTMENT_COLUMNS}
+       from appointments
+       where tenant_id = $1
+         and status = 'BOOKED'
+         and google_event_id is not null
+         and start_at >= $2 and start_at <= $3
+       order by start_at`,
+      [tenantId, from, to],
+    );
+    return rows as Appointment[];
+  }
+
   async setConfirmationStatus(
     tenantId: string,
     appointmentId: string,
