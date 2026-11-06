@@ -144,6 +144,37 @@ npm run ticket -- resolve <externalUserId>
 npm run sla:sweep
 ```
 
+## Owner notifications
+
+When a ticket is created the bot sends a structured card to every clinic user
+that has a linked channel id:
+
+```
+[TICKET #ab12cd34] Paciente: Maria
+Motivo: Relato clínico
+Pedido: "Estou com dor de dente"
+Prazo: 14:32
+
+1) Assumir a conversa
+2) Encerrar o ticket
+3) Responder ao paciente (envie: 3 sua mensagem)
+Responda com o número.
+```
+
+The dentist answers the bot, never the patient directly. A linked id is always
+treated as staff, so use a separate Telegram account for the demo.
+
+```powershell
+# This Telegram id becomes staff and receives the cards
+npm run owner -- link <telegramUserId> [ownerName]
+
+# Back to being treated as a patient
+npm run owner -- unlink <telegramUserId>
+```
+
+Linking an id also re-sends the card for the current open ticket, so the demo
+works even if the ticket already existed.
+
 Two destructive demo CLIs exist only for repeatable demos. Both refuse to run
 with `NODE_ENV=production`.
 

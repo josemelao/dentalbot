@@ -168,6 +168,35 @@ export class TicketsRepository {
     return (rows[0] as HumanTicket | undefined) ?? null;
   }
 
+  /** The most recent open ticket for a tenant, used by owner commands. */
+  async findLatestOpen(tenantId: string): Promise<HumanTicket | null> {
+    const { rows } = await this.db.query(
+      `select ${TICKET_COLUMNS}
+       from human_tickets
+       where tenant_id = $1 and status in ('open', 'notified', 'answered')
+       order by created_at desc
+       limit 1`,
+      [tenantId],
+    );
+    return (rows[0] as HumanTicket | undefined) ?? null;
+  }
+
+  /** Records the human answer on the ticket; the ticket stays open until resolved. */
+  async answer(
+    tenantId: string,
+    ticketId: string,
+    answer: string,
+    userId: string | null,
+  ): Promise<void> {
+    await this.db.query(
+      `update human_tickets
+       set answer = $3, answered_by = $4, answered_at = now(), status = 'answered',
+           updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, ticketId, answer, userId],
+    );
+  }
+
   /** The open ticket of a contact's current conversation, if any. */
   async findOpenByContact(tenantId: string, contactId: string): Promise<HumanTicket | null> {
     const { rows } = await this.db.query(

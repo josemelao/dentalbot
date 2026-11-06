@@ -16,6 +16,7 @@ import { ChannelsRepository } from '../../db/repositories/channels.repository';
 import { WebhookEventsRepository } from '../../db/repositories/webhook-events.repository';
 import { ENV } from '../../db/tokens';
 import { InboundService } from '../../pipeline/inbound.service';
+import { OwnerCommandService } from '../../pipeline/owner-command.service';
 import { mapTelegramUpdate } from './telegram.mapper';
 import { verifyTelegramSecret } from './telegram-signature';
 
@@ -52,6 +53,7 @@ export class TelegramWebhookController {
     private readonly channels: ChannelsRepository,
     private readonly events: WebhookEventsRepository,
     private readonly inbound: InboundService,
+    private readonly ownerCommands: OwnerCommandService,
   ) {}
 
   @Post(':externalChannelId')
@@ -104,10 +106,26 @@ export class TelegramWebhookController {
       return { ok: true };
     }
 
-    const result = await this.inbound.handle(
-      normalized,
-      req.correlationId ?? String(update.update_id),
+    const correlationId = req.correlationId ?? String(update.update_id);
+
+    // A linked staff id is never treated as a patient: it is a ticket command.
+    const owner = await this.channels.findOwnerByExternalId(
+      'telegram',
+      normalized.externalUserId,
     );
+    if (owner && owner.tenantId === channel.tenantId) {
+      await this.ownerCommands.handle({
+        tenantId: channel.tenantId,
+        userId: owner.userId,
+        externalUserId: normalized.externalUserId,
+        text: normalized.content ?? '',
+        correlationId,
+      });
+      await this.events.markProcessed(channel.tenantId, event.id, 'processed');
+      return { ok: true };
+    }
+
+    const result = await this.inbound.handle(normalized, correlationId);
 
     await this.events.markProcessed(
       channel.tenantId,

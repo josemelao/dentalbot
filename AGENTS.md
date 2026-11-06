@@ -88,3 +88,13 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
   `UNKNOWN`. A weaker signal never downgrades a ticket.
 - If nobody accepts by `sla_due_at`, the patient receives the SLA fallback. Never
   leave a patient without a reply or a fallback.
+
+## Owner channel invariants
+
+- An id present in `clinic_user_channels` is staff, never a patient. Routing must
+  check it before creating a contact or conversation.
+- The dentist answers the bot (`1` assume, `2` resolve, `3 <text>` relay); the bot
+  composes and sends to the patient. The dentist never messages the patient
+  directly.
+- The card never carries the full external id: display name, or a masked tail.
+- A failed delivery to one owner must not stop the others.

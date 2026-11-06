@@ -1,16 +1,21 @@
 import { OwnerNotifier } from '../channels/owner-notifier';
+import { Channel } from '../contracts/channel';
 import { AuditRepository } from '../db/repositories/audit.repository';
 import { ChannelsRepository } from '../db/repositories/channels.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
+import { PatientsRepository } from '../db/repositories/patients.repository';
 import { HumanTicket, TicketReason } from '../db/repositories/rows';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
+import { formatPatientLabel, formatTicketCard } from './ticket-card';
 
 export interface EscalationDependencies {
   tickets: TicketsRepository;
   channels: ChannelsRepository;
   conversations: ConversationsRepository;
+  patients: PatientsRepository;
   audit: AuditRepository;
   notifier: OwnerNotifier;
+  ownerChannel: Channel;
   slaMinutes: number;
 }
 
@@ -88,10 +93,21 @@ export class EscalationService {
       metadata: { reason: input.reason, slaMinutes: this.deps.slaMinutes },
     });
 
-    const owners = await this.deps.channels.listOwners(input.tenantId);
+    const recipients = await this.deps.channels.listOwnerRecipients(
+      input.tenantId,
+      this.deps.ownerChannel,
+    );
+    const contact = await this.deps.patients.findContactById(
+      input.tenantId,
+      input.patientContactId,
+    );
+    const patientLabel = formatPatientLabel(contact?.displayName, contact?.externalUserId ?? '');
 
     try {
-      const { deliveredTo } = await this.deps.notifier.notifyTicket(ticket, owners);
+      const { deliveredTo } = await this.deps.notifier.notify(
+        { ticket, patientLabel, text: formatTicketCard(ticket, patientLabel) },
+        recipients,
+      );
       if (deliveredTo.length === 0) {
         return ticket;
       }
@@ -109,6 +125,26 @@ export class EscalationService {
     }
 
     return ticket;
+  }
+
+  /** Re-sends the card for an already-open ticket (used when an owner is linked later). */
+  async renotify(ticket: HumanTicket): Promise<{ deliveredTo: string[] }> {
+    const recipients = await this.deps.channels.listOwnerRecipients(
+      ticket.tenantId,
+      this.deps.ownerChannel,
+    );
+    if (recipients.length === 0) return { deliveredTo: [] };
+
+    const contact = await this.deps.patients.findContactById(
+      ticket.tenantId,
+      ticket.patientContactId,
+    );
+    const patientLabel = formatPatientLabel(contact?.displayName, contact?.externalUserId ?? '');
+
+    return this.deps.notifier.notify(
+      { ticket, patientLabel, text: formatTicketCard(ticket, patientLabel) },
+      recipients,
+    );
   }
 
   /**

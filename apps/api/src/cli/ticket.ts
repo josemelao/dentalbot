@@ -5,6 +5,7 @@ import { createPool } from '../db/pool';
 import { AuditRepository } from '../db/repositories/audit.repository';
 import { ChannelsRepository } from '../db/repositories/channels.repository';
 import { ConversationsRepository } from '../db/repositories/conversations.repository';
+import { PatientsRepository } from '../db/repositories/patients.repository';
 import { TicketsRepository } from '../db/repositories/tickets.repository';
 import { EscalationService } from '../pipeline/escalation.service';
 
@@ -49,8 +50,10 @@ async function main(): Promise<void> {
       tickets,
       channels: new ChannelsRepository(pool),
       conversations: new ConversationsRepository(pool),
+      patients: new PatientsRepository(pool),
       audit: new AuditRepository(pool),
       notifier: new NoopOwnerNotifier(),
+      ownerChannel: 'telegram',
       slaMinutes: env.slaMinutes,
     });
 

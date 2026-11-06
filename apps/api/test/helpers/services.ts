@@ -44,8 +44,10 @@ export function buildInboundService(pool: Pool): InboundService {
     tickets,
     channels,
     conversations,
+    patients,
     audit,
     notifier,
+    ownerChannel: 'telegram',
     slaMinutes: 15,
   });
   const composer = new ResponseComposer();

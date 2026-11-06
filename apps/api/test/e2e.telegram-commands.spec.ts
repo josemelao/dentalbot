@@ -3,6 +3,7 @@ import { NoopOwnerNotifier } from '../src/channels/owner-notifier';
 import { AuditRepository } from '../src/db/repositories/audit.repository';
 import { ChannelsRepository } from '../src/db/repositories/channels.repository';
 import { ConversationsRepository } from '../src/db/repositories/conversations.repository';
+import { PatientsRepository } from '../src/db/repositories/patients.repository';
 import { TicketsRepository } from '../src/db/repositories/tickets.repository';
 import { EscalationService } from '../src/pipeline/escalation.service';
 import { getTestPool, seedClinic, seedKnowledge } from './helpers/db';
@@ -258,8 +259,10 @@ describe('accepted ticket hands the conversation to the human', () => {
       tickets,
       channels: new ChannelsRepository(pool),
       conversations: new ConversationsRepository(pool),
+      patients: new PatientsRepository(pool),
       audit: new AuditRepository(pool),
       notifier: new NoopOwnerNotifier(),
+      ownerChannel: 'telegram',
       slaMinutes: 15,
     }).resolve({ tenantId: ids.tenantId, ticket });
 

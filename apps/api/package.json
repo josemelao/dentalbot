@@ -16,6 +16,7 @@
     "demo:reset": "tsx src/cli/demo-reset.ts",
     "demo:link-patient": "tsx src/cli/demo-link-patient.ts",
     "ticket": "tsx src/cli/ticket.ts",
+    "owner": "tsx src/cli/owner.ts",
     "sla:sweep": "tsx src/cli/sla-sweep.ts"
   },
   "dependencies": {

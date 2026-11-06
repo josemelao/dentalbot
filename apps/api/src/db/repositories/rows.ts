@@ -41,6 +41,12 @@ export interface ClinicUser {
   status: string;
 }
 
+export interface OwnerRecipient {
+  userId: string;
+  name: string;
+  externalUserId: string;
+}
+
 export interface PatientContact {
   id: string;
   tenantId: string;

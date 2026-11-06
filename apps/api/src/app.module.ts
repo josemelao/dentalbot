@@ -8,7 +8,7 @@ import { OpenAiIntentGateway } from './ai/openai-intent.gateway';
 import { AI_GATEWAY } from './ai/tokens';
 import { ChannelAdapter } from './channels/channel-adapter';
 import { FakeChannelAdapter } from './channels/fake/fake-channel.adapter';
-import { OwnerNotifier, NoopOwnerNotifier } from './channels/owner-notifier';
+import { OwnerNotifier, ChannelOwnerNotifier, NoopOwnerNotifier } from './channels/owner-notifier';
 import { CHANNEL_ADAPTER, OWNER_NOTIFIER } from './channels/tokens';
 import { TelegramAdapter } from './channels/telegram/telegram.adapter';
 import { TelegramWebhookController } from './channels/telegram/telegram.webhook.controller';
@@ -38,6 +38,7 @@ import { SchedulingFlowService } from './scheduling/scheduling-flow.service';
 import { SlotEngine } from './scheduling/slot-engine';
 import { ResponseComposer } from './pipeline/composer.service';
 import { EscalationService } from './pipeline/escalation.service';
+import { OwnerCommandService } from './pipeline/owner-command.service';
 import { FaqService } from './pipeline/faq.service';
 import { IdentityService } from './pipeline/identity.service';
 import { InboundService } from './pipeline/inbound.service';
@@ -61,7 +62,16 @@ export class AppModule {
       (options.env.aiProvider === 'openai' && options.env.openaiApiKey
         ? new DeterministicFirstGateway(new OpenAiIntentGateway(options.env.openaiApiKey))
         : new FakeAiGateway(DEFAULT_AI_RULES));
-    const notifier = options.notifier ?? new NoopOwnerNotifier();
+    const channelAdapter =
+      options.channelAdapter ??
+      (options.env.channelTransport === 'fake'
+        ? new FakeChannelAdapter()
+        : new TelegramAdapter(options.env));
+    const notifier =
+      options.notifier ??
+      (options.env.channelTransport === 'fake'
+        ? new NoopOwnerNotifier()
+        : new ChannelOwnerNotifier(channelAdapter));
     const calendarAdapter =
       options.calendarAdapter ??
       (options.env.nodeEnv === 'production' ? null : new FakeCalendarAdapter());
@@ -82,11 +92,7 @@ export class AppModule {
         },
         {
           provide: CHANNEL_ADAPTER,
-          useValue:
-            options.channelAdapter ??
-            (options.env.channelTransport === 'fake'
-              ? new FakeChannelAdapter()
-              : new TelegramAdapter(options.env)),
+          useValue: channelAdapter,
         },
         { provide: AI_GATEWAY, useValue: aiGateway },
         { provide: OWNER_NOTIFIER, useValue: notifier },
@@ -257,6 +263,7 @@ export class AppModule {
             tickets: TicketsRepository,
             channels: ChannelsRepository,
             conversations: ConversationsRepository,
+            patients: PatientsRepository,
             audit: AuditRepository,
             notifierService: OwnerNotifier,
           ) =>
@@ -264,16 +271,50 @@ export class AppModule {
               tickets,
               channels,
               conversations,
+              patients,
               audit,
               notifier: notifierService,
+              ownerChannel: 'telegram',
               slaMinutes: options.env.slaMinutes,
             }),
           inject: [
             TicketsRepository,
             ChannelsRepository,
             ConversationsRepository,
+            PatientsRepository,
             AuditRepository,
             OWNER_NOTIFIER,
+          ],
+        },
+        {
+          provide: OwnerCommandService,
+          useFactory: (
+            tickets: TicketsRepository,
+            conversations: ConversationsRepository,
+            patients: PatientsRepository,
+            messages: MessagesRepository,
+            audit: AuditRepository,
+            escalation: EscalationService,
+            channel: ChannelAdapter,
+          ) =>
+            new OwnerCommandService({
+              tickets,
+              conversations,
+              patients,
+              messages,
+              audit,
+              escalation,
+              channel,
+              now: () => new Date(),
+            }),
+          inject: [
+            TicketsRepository,
+            ConversationsRepository,
+            PatientsRepository,
+            MessagesRepository,
+            AuditRepository,
+            EscalationService,
+            CHANNEL_ADAPTER,
           ],
         },
         {

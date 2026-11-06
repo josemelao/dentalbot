@@ -78,6 +78,12 @@ export async function seedClinic(
     dentistId: dentist.id,
   };
 
+  await db.query(
+    `insert into clinic_user_channels (tenant_id, user_id, channel, external_user_id)
+     values ($1, $2, 'telegram', $3), ($1, $4, 'telegram', $5)`,
+    [clinic.id, owner.id, `owner-${suffix}`, dentist.id, `dentist-${suffix}`],
+  );
+
   if (options.withConversation) {
     const {
       rows: [contact],
