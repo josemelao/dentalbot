@@ -99,6 +99,81 @@ Nunca commite o `.env` nem a chave da service account (`secrets/` está no
 
 ---
 
+## Replicar em outra máquina
+
+O repositório traz **código + schema + seeds**. O banco é recriado do zero; os
+dados reais **não** vêm no clone.
+
+### O que transferir manualmente
+
+| Arquivo | Por quê |
+|---|---|
+| `apps/api/.env` | tokens, segredos e caminhos (gitignored) |
+| `secrets/<service-account>.json` | chave do Google (gitignored) |
+| `backup.sql` (opcional) | só se quiser os mesmos dados |
+
+Tudo o mais — código, migrations, seeds, docs, `docker-compose.yml`,
+`.env.example` — já está no Git.
+
+### Passo a passo
+
+Pré-requisitos: **Node 20+**, **Docker Desktop**, **git**.
+
+```bash
+git clone https://github.com/josemelao/dentalbot.git
+cd dentalbot
+docker compose up -d
+
+cd apps/api
+npm install
+cp .env.example .env        # depois preencha os valores
+npm run migrate             # cria o schema (0001..0022)
+npm run seed                # clínica fictícia + FAQ
+npm run seed:scheduling     # profissionais, serviços, horários
+npm run user:password -- chow@example.com "sua senha"
+npm run dev                 # API em :3000
+```
+
+Em outro terminal:
+
+```bash
+cd apps/api
+npm run worker              # jobs: sla, reminders, idle, calendar, reconcile
+```
+
+Testes (o banco de teste é criado e migrado automaticamente):
+
+```bash
+cd apps/api
+npm test
+```
+
+### Quer os mesmos dados?
+
+```bash
+# na máquina antiga
+docker exec novapasta-db-1 pg_dump -U postgres -d dental_assistant > backup.sql
+
+# na nova, depois do docker compose up
+docker exec -i novapasta-db-1 psql -U postgres -d dental_assistant < backup.sql
+```
+
+O dump traz conversas, tickets, agendamentos, FAQ editada e as senhas do painel.
+
+### O que quebra no PC novo
+
+| Sintoma | Causa | Correção |
+|---|---|---|
+| Bot não responde | webhook aponta para o túnel antigo | refazer o `setWebhook` com a URL nova |
+| Google `403` | `secrets/` ausente ou caminho errado no `.env` | copiar o JSON e ajustar o caminho |
+| Login do painel falha | banco novo, sem senha | rodar `user:password` de novo |
+| `npm test` falha | Postgres não está de pé | `docker compose up -d` |
+
+> O seed é idempotente (reaproveita a clínica "Clínica Piloto"), mas o tenant id
+> é gerado de novo num banco vazio.
+
+---
+
 ## Painel
 
 ```
