@@ -27,6 +27,14 @@ function classify(message: TelegramMessage): MessageType {
   return 'unsupported';
 }
 
+/**
+ * In groups and with some clients Telegram delivers `/start@SomeBot`. Strip the
+ * bot mention so the command still matches the intent rules.
+ */
+function normalizeCommand(text: string): string {
+  return text.replace(/^(\/[a-z0-9_]+)@[a-z0-9_]+/i, '$1');
+}
+
 export function mapTelegramUpdate(
   update: unknown,
   ctx: { tenantId: string; externalChannelId: string },
@@ -45,7 +53,10 @@ export function mapTelegramUpdate(
     externalConversationId: String(message.chat.id),
     externalMessageId: String(message.message_id),
     messageType,
-    content: messageType === 'text' ? (message.text ?? null) : null,
+    content:
+      messageType === 'text' && typeof message.text === 'string'
+        ? normalizeCommand(message.text)
+        : null,
     media: messageType === 'text' ? null : { kind: messageType },
     receivedAt: new Date(message.date * 1000),
   };

@@ -103,4 +103,19 @@ export class TicketsRepository {
       [tenantId, ticketId, status],
     );
   }
+
+  async reclassify(
+    tenantId: string,
+    ticketId: string,
+    reason: TicketReason,
+    summary: string,
+    slaDueAt: Date,
+  ): Promise<void> {
+    await this.db.query(
+      `update human_tickets
+       set reason = $3, summary = $4, sla_due_at = $5, updated_at = now()
+       where tenant_id = $1 and id = $2`,
+      [tenantId, ticketId, reason, summary, slaDueAt],
+    );
+  }
 }

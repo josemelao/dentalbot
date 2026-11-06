@@ -48,6 +48,7 @@ Phase 0–1 covers foundation, inbound, identity/context and administrative FAQ.
 8. Administrative FAQ answers come verbatim from an approved, in-force
    `knowledge_entries` row. No entry means `UNKNOWN` escalation, never invention.
 9. Greeting, unsupported media and unknown intents have explicit safe replies.
+   Telegram `/start` and `/help` count as greetings and must never open a ticket.
 
 Scheduling, reminders, WhatsApp Cloud API, real owner delivery and the panel are
 Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
@@ -56,7 +57,9 @@ Phase 2/3. See `0 - MVP Blueprint - Dental Assistant.md`.
 
 1. Deduplicate the channel event in `webhook_events`.
 2. Resolve `tenant_id`, contact and conversation.
-3. If a human ticket is open, set `HUMAN_ACTIVE` and do not auto-reply.
+3. If a human ticket is open, set `HUMAN_ACTIVE` and do not auto-reply. An
+   emergency still sends the safety protocol, and a clinical signal upgrades the
+   open ticket (`reclassified`) so the record is not lost.
 4. Run deterministic safety triage. `EMERGENCY` always wins.
 5. If the conversation has an active scheduling context, handle the reply in the
    flow (service, slot, confirmation or identity) without calling the AI.

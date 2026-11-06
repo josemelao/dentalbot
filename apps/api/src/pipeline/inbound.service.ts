@@ -102,7 +102,38 @@ export class InboundService {
             ? this.deps.safety.triage(text)
             : { tier: 'ADMINISTRATIVE' as const, matchedRule: null, confidence: 0.5 };
 
-        if (triage.tier !== 'EMERGENCY') {
+        if (triage.tier === 'EMERGENCY') {
+          // Emergencies override the human-active silence.
+          try {
+            await this.deps.escalation.escalateExisting({
+              tenantId: normalized.tenantId,
+              ticket: openTicket,
+              reason: 'EMERGENCY',
+              summary: 'Possível emergência odontológica durante conversa humana',
+            });
+          } catch {
+            // The safety reply must go out even if the ticket cannot be updated.
+          }
+          decision = {
+            kind: 'EMERGENCY_PROTOCOL',
+            rule: triage.matchedRule ?? 'deterministic_emergency',
+          };
+        } else {
+          if (triage.tier === 'CLINICAL') {
+            // The patient still gets no automatic reply (a human owns the
+            // conversation), but the clinical signal must reach the record.
+            try {
+              await this.deps.escalation.escalateExisting({
+                tenantId: normalized.tenantId,
+                ticket: openTicket,
+                reason: 'CLINICAL',
+                summary: 'Relato clínico durante conversa humana',
+              });
+            } catch {
+              // Never block the pipeline on the reclassification.
+            }
+          }
+
           await this.deps.audit.append({
             tenantId: normalized.tenantId,
             actorType: 'system',
@@ -129,24 +160,6 @@ export class InboundService {
             correlationId,
           };
         }
-
-        // Emergencies override the human-active silence.
-        try {
-          await this.deps.escalation.create({
-            tenantId: normalized.tenantId,
-            conversationId: conversation.id,
-            patientContactId: conversation.patientContactId,
-            reason: 'EMERGENCY',
-            summary: 'Possível emergência odontológica durante conversa humana',
-            question: text,
-          });
-        } catch {
-          // The safety reply must go out even if the ticket cannot be persisted.
-        }
-        decision = {
-          kind: 'EMERGENCY_PROTOCOL',
-          rule: triage.matchedRule ?? 'deterministic_emergency',
-        };
       } else {
         decision = await this.decide(normalized, conversation, inboundMessage, recentMessages);
       }

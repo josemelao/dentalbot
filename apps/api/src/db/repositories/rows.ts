@@ -10,7 +10,8 @@ export type TicketEvent =
   | 'accepted'
   | 'answered'
   | 'resolved'
-  | 'fallback';
+  | 'fallback'
+  | 'reclassified';
 export type KnowledgeStatus = 'draft' | 'approved' | 'retired';
 
 export interface Clinic {

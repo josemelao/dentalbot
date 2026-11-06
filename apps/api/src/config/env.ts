@@ -3,18 +3,26 @@ import { z } from 'zod';
 const DEFAULT_TEST_DATABASE_URL =
   'postgres://postgres:postgres@localhost:5432/dental_assistant_test';
 
+/** An empty or whitespace-only env var is the same as not setting it at all. */
+const optionalString = (schema: z.ZodString) =>
+  z.preprocess(
+    (value) =>
+      typeof value === 'string' && value.trim().length === 0 ? undefined : value,
+    schema.optional(),
+  );
+
 const EnvSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().positive().default(3000),
     DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     TEST_DATABASE_URL: z.string().min(1).default(DEFAULT_TEST_DATABASE_URL),
-    TELEGRAM_BOT_TOKEN: z.string().min(1).optional(),
-    TELEGRAM_WEBHOOK_SECRET: z.string().min(1).optional(),
+    TELEGRAM_BOT_TOKEN: optionalString(z.string().min(1)),
+    TELEGRAM_WEBHOOK_SECRET: optionalString(z.string().min(1)),
     TELEGRAM_API_BASE_URL: z.string().url().default('https://api.telegram.org'),
     AI_PROVIDER: z.enum(['fake', 'openai']).default('fake'),
     CHANNEL_TRANSPORT: z.enum(['telegram', 'fake']).default('telegram'),
-    OPENAI_API_KEY: z.string().min(1).optional(),
+    OPENAI_API_KEY: optionalString(z.string().min(1)),
     LOG_LEVEL: z.string().default('info'),
     SLA_MINUTES: z.coerce.number().int().positive().default(15),
   })

@@ -119,6 +119,29 @@ With the API running and the scheduling seed applied:
 The demo identity exists only if the contact is linked to a patient with that
 name and birth date. The automated E2E test seeds it.
 
+## Demo helpers
+
+Telegram sends `/start` on the first tap. It is treated as a greeting, so it does
+not open a ticket.
+
+Once a human ticket is open the conversation is `HUMAN_ACTIVE` and the bot stays
+silent on purpose. A clinical or emergency signal still upgrades the open ticket
+(`reclassified` event) so the clinic record is not lost.
+
+Two destructive CLIs exist only for repeatable demos. Both refuse to run with
+`NODE_ENV=production`.
+
+```powershell
+# Back to a fresh conversation: cancels open tickets, clears scheduling context
+npm run demo:reset -- <externalUserId>
+
+# Links the contact to a patient so reschedule/cancel can pass identity
+npm run demo:link-patient -- <externalUserId> "Maria Silva" 1990-05-10
+```
+
+`<externalUserId>` is the Telegram user id, stored in
+`patient_contacts.external_user_id`.
+
 ## Phase 1 boundaries
 
 - Scheduling, rescheduling, cancellation, reminders, WhatsApp Cloud API and the
