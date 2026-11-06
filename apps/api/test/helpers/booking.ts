@@ -18,7 +18,7 @@ export function buildBookingService(
       granularityMinutes: 15,
       minAdvanceMinutes: 0,
       maxHorizonDays: 90,
-    }),
+    }, calendar),
     appointments: new AppointmentsRepository(pool),
     operations: new OperationsRepository(pool),
     locks: new LocksRepository(pool),

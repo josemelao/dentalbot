@@ -1,4 +1,5 @@
 import {
+  BusyBlock,
   CalendarAdapter,
   CalendarEvent,
   CalendarEventLookup,
@@ -7,6 +8,7 @@ import {
 export class FakeCalendarAdapter implements CalendarAdapter {
   readonly events = new Map<string, CalendarEvent>();
   readonly cancelled: string[] = [];
+  readonly busy: BusyBlock[] = [];
 
   failNextCreate: Error | null = null;
   createThenThrow: Error | null = null;
@@ -42,8 +44,12 @@ export class FakeCalendarAdapter implements CalendarAdapter {
     return { exists: true, startAt: event.startAt, endAt: event.endAt };
   }
 
-  async cancelEvent(externalEventId: string): Promise<void> {
-    if (this.failNextCancel) {
+  /** Simulates the doctor's personal events. */
+  async isBusy(from: Date, to: Date): Promise<BusyBlock[]> {
+    return this.busy.filter((block) => block.startAt < to && block.endAt > from);
+  }
+
+  async cancelEvent(externalEventId: string): Promise<void> {    if (this.failNextCancel) {
       const error = this.failNextCancel;
       this.failNextCancel = null;
       throw error;

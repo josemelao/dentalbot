@@ -1,4 +1,5 @@
 import { DomainError } from '../common/errors';
+import { CalendarAdapter } from '../calendar/calendar-adapter';
 import { CatalogRepository } from '../db/repositories/catalog.repository';
 import { SlotEngine } from './slot-engine';
 import { Slot, SlotRequest } from './types';
@@ -14,6 +15,7 @@ export class AvailabilityService {
     private readonly catalog: CatalogRepository,
     private readonly engine: SlotEngine,
     private readonly config: AvailabilityConfig,
+    private readonly calendar?: CalendarAdapter,
   ) {}
 
   async findSlots(request: SlotRequest): Promise<Slot[]> {
@@ -87,7 +89,7 @@ export class AvailabilityService {
       request.now,
     );
 
-    return this.engine.findSlots({
+    const slots = this.engine.findSlots({
       request,
       service,
       variant,
@@ -105,5 +107,25 @@ export class AvailabilityService {
       minAdvanceMinutes: this.config.minAdvanceMinutes,
       maxHorizonDays: this.config.maxHorizonDays,
     });
+
+    return this.removeCalendarBusy(slots, request);
+  }
+
+  /** Drops slots that collide with the doctor's own calendar (personal events). */
+  private async removeCalendarBusy(slots: Slot[], request: SlotRequest): Promise<Slot[]> {
+    if (!this.calendar?.isBusy) return slots;
+
+    let busy;
+    try {
+      busy = await this.calendar.isBusy(request.from, request.to);
+    } catch {
+      // A calendar outage must not block booking on the internal agenda.
+      return slots;
+    }
+
+    if (busy.length === 0) return slots;
+    return slots.filter(
+      (slot) => !busy.some((block) => slot.startAt < block.endAt && slot.endAt > block.startAt),
+    );
   }
 }

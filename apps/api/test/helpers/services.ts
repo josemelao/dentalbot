@@ -64,11 +64,12 @@ export function buildInboundService(
   const composer = new ResponseComposer();
 
   const catalog = new CatalogRepository(pool);
+  const calendar = new FakeCalendarAdapter();
   const availability = new AvailabilityService(catalog, new SlotEngine(), {
     granularityMinutes: 15,
     minAdvanceMinutes: 0,
     maxHorizonDays: 90,
-  });
+  }, calendar);
   const appointments = new AppointmentsRepository(pool);
   const operations = new OperationsRepository(pool);
   const locks = new LocksRepository(pool);

@@ -193,13 +193,13 @@ export class AppModule {
         SlotEngine,
         {
           provide: AvailabilityService,
-          useFactory: (catalog: CatalogRepository, engine: SlotEngine) =>
+          useFactory: (catalog: CatalogRepository, engine: SlotEngine, calendar: CalendarAdapter) =>
             new AvailabilityService(catalog, engine, {
               granularityMinutes: 15,
               minAdvanceMinutes: 120,
               maxHorizonDays: 90,
-            }),
-          inject: [CatalogRepository, SlotEngine],
+            }, calendar),
+          inject: [CatalogRepository, SlotEngine, CALENDAR_ADAPTER],
         },
         {
           provide: BookingService,

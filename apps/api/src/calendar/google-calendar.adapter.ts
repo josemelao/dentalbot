@@ -2,6 +2,7 @@ import {
   CalendarAdapter,
   CalendarEvent,
   CalendarEventLookup,
+  BusyBlock,
 } from './calendar-adapter';
 
 export interface GoogleCalendarOptions {
@@ -83,6 +84,38 @@ export class GoogleCalendarAdapter implements CalendarAdapter {
     if (!response.ok) {
       throw new Error(`Google Calendar cancel failed: ${response.status}`);
     }
+  }
+
+  /**
+   * Free/busy returns only busy blocks, never titles: the bot learns that a
+   * time is taken, not what the doctor is doing.
+   */
+  async isBusy(from: Date, to: Date): Promise<BusyBlock[]> {
+    const response = await this.fetchImpl(`${this.baseUrl}/freeBusy`, {
+      method: 'POST',
+      headers: await this.headers(),
+      body: JSON.stringify({
+        timeMin: from.toISOString(),
+        timeMax: to.toISOString(),
+        items: [{ id: this.options.calendarId }],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Google Calendar freeBusy failed: ${response.status}`);
+    }
+
+    const body = (await response.json()) as {
+      calendars?: Record<string, { busy?: Array<{ start?: string; end?: string }> }>;
+    };
+    const busy = body.calendars?.[this.options.calendarId]?.busy ?? [];
+
+    return busy
+      .filter((block) => block.start && block.end)
+      .map((block) => ({
+        startAt: new Date(block.start as string),
+        endAt: new Date(block.end as string),
+      }));
   }
 
   private eventsUrl(): string {
